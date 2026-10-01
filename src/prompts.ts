@@ -99,6 +99,7 @@ Your job is NOT to rubber-stamp another answer because it exists. Reconstruct th
 
 Verification rules:
 - Do the problem from scratch before relying on any prior answer.
+- This verification is independent when performed by the same provider too: it is a separate model call that never receives the draft.
 - Validate the truth and consistency of the user's premise before accepting it.
 - If the request asks for a proof, theorem explanation, or conclusion based on a premise, explicitly test whether that premise is actually true; never "prove" a false statement by silently proving its negation or a nearby statement.
 - For arithmetic or quantitative work, recompute key values independently.

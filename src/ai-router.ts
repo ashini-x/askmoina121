@@ -321,8 +321,24 @@ export async function streamWithFallback(
   throw new Error("Moina could not complete that request. Please try again.");
 }
 
-function preferredDiverseProviders(env: Env, excluded: ProviderName | undefined, preferred: ProviderName[]): ProviderName[] {
-  return preferred.filter((provider) => provider !== excluded && providerAvailable(provider, env));
+export function verificationProviderOrder(
+  env: Env,
+  excluded: ProviderName | undefined,
+  preferred: ProviderName[] = ["groq", "gemini", "cloudflare"],
+): ProviderName[] {
+  const diverse = preferred.filter(
+    (provider) => provider !== excluded && providerAvailable(provider, env) && !isCoolingDown(provider),
+  );
+
+  // Provider diversity is preferred, but it must never make verification disappear
+  // when the other providers are unavailable or rate-limited. A second request to
+  // the primary provider is still independent because the verifier never receives
+  // the draft and reconstructs the answer from the original request.
+  if (excluded && providerAvailable(excluded, env) && !isCoolingDown(excluded)) {
+    diverse.push(excluded);
+  }
+
+  return diverse.length ? diverse : availableProviders(env);
 }
 
 export async function runPrimary(
@@ -355,7 +371,11 @@ export async function runIndependentVerification(
   signal: AbortSignal,
   excludeProvider?: ProviderName,
 ): Promise<{ context: ProviderContext; text: string }> {
-  const preferred = preferredDiverseProviders(env, excludeProvider, ["groq", "gemini", "cloudflare"]);
+  const preferred = verificationProviderOrder(
+    env,
+    excludeProvider,
+    ["groq", "gemini", "cloudflare"],
+  );
   const chunks: string[] = [];
   const context = await streamWithFallback({
     mode,
@@ -363,7 +383,7 @@ export async function runIndependentVerification(
     messages: buildVerificationPrompt(messages, sandboxFeedback, searchContext),
     signal,
     onText: (text) => chunks.push(text),
-  }, env, preferred.length ? preferred : availableProviders(env));
+  }, env, preferred);
 
   return { context, text: chunks.join("").trim() };
 }

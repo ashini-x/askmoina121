@@ -11,7 +11,7 @@ import {
 } from "../src/core/config";
 import { sanitizeInput, validatePythonCode } from "../src/security/guardrails";
 import { formatSearchContext } from "../src/tools/search";
-import { shouldAudit, shouldSearch } from "../src/ai-router";
+import { shouldAudit, shouldSearch, verificationProviderOrder } from "../src/ai-router";
 import { buildConversationContext, buildFinalReviewPrompt, buildVerificationPrompt, classifySpecialPrompt, finalReviewSystemPrompt, isIdentityPrompt, primarySystemPrompt, specialPromptResponse, verificationSystemPrompt } from "../src/prompts";
 
 describe("Moina limits", () => {
@@ -150,5 +150,24 @@ describe("Customer identity and safe transparency", () => {
       expect(prompt).toContain("Customer-facing identity contract");
       expect(prompt).toContain("Do NOT claim that OpenAI");
     }
+  });
+});
+
+
+describe("Independent verification provider fallback", () => {
+  const envWith = (providers: string[]) => ({
+    GEMINI_API_KEY: providers.includes("gemini") ? "g" : undefined,
+    GROQ_API_KEY: providers.includes("groq") ? "q" : undefined,
+    AI: providers.includes("cloudflare") ? { run: async () => ({}) } : undefined,
+  });
+
+  it("prefers a different provider but retains the primary as a last-resort independent verifier", () => {
+    expect(verificationProviderOrder(envWith(["gemini", "groq"]), "gemini", ["groq", "gemini", "cloudflare"]))
+      .toEqual(["groq", "gemini"]);
+  });
+
+  it("still permits a same-provider independent pass when it is the only provider", () => {
+    expect(verificationProviderOrder(envWith(["gemini"]), "gemini", ["groq", "gemini", "cloudflare"]))
+      .toEqual(["gemini"]);
   });
 });
