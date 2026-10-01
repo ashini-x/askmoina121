@@ -1,93 +1,181 @@
-# Manual GitHub Upload + Cloudflare Deployment
+# Upload to GitHub + Deploy `askmoina121`
 
-This is the exact procedure for the supplied AskMoina 1.2.1 release.
+This release is designed for a Cloudflare Worker serving the static Moina frontend.
 
 ## 1. Extract the ZIP
 
-Extract the ZIP and open the folder that directly contains:
+Extract the release so the folder you open contains:
 
-- `package.json`
-- `wrangler.jsonc`
-- `frontend/`
-- `src/`
-- `tests/`
+```text
+package.json
+wrangler.jsonc
+frontend/
+src/
+tests/
+docs/
+```
 
 That folder is the repository root.
 
-## 2. Create the GitHub repository
+## 2. Create or update GitHub
 
-GitHub → `+` → `New repository`.
+For a new repository:
 
-Suggested name: `askmoina121`
+1. GitHub → `+` → `New repository`.
+2. Repository name: `askmoina121`.
+3. Private is recommended while developing.
+4. Do **not** initialize with another README, `.gitignore`, or license.
+5. Create the repository.
 
-For development, Private is recommended. Do not initialize the repository with another README, `.gitignore`, or license because this release already contains its own repository files.
+Then choose `Add file` → `Upload files` and upload the **contents** of the extracted release folder.
 
-## 3. Upload the contents
+The GitHub root must look like:
 
-Inside the empty GitHub repository choose `Add file` → `Upload files`.
-
-Drag the **contents** of the extracted project root into the GitHub upload area. The top-level folders such as `frontend/` and `src/` must remain folders in GitHub.
+```text
+frontend/
+src/
+tests/
+docs/
+package.json
+wrangler.jsonc
+README.md
+.gitignore
+```
 
 Do not upload:
 
-- `.dev.vars`
-- `.env`
-- `node_modules/`
-- any API key or credential file
+```text
+.dev.vars
+.env
+node_modules/
+```
 
-Commit with a message such as `Initial Moina 1.2.1 release`.
+Do not paste real API keys into GitHub.
 
-## 4. Connect GitHub to Cloudflare
+Commit with something such as:
 
-Cloudflare Dashboard → Workers & Pages → Create application → Import a repository.
+```text
+Deploy Moina multi-provider AI engine
+```
 
-Connect GitHub, choose the `askmoina121` repository, then Save and Deploy.
+## 3. Connect GitHub to Cloudflare
 
-The repository already contains `wrangler.jsonc`, which declares the Worker entry point and static frontend asset directory. The Worker name is `askmoina121`.
+Cloudflare Dashboard → `Workers & Pages` → create/import a Worker from your GitHub repository.
 
-## 5. Optional E2B key
+Select:
 
-The application does not need an AI provider key. If you want Python execution/verification, add:
+```text
+Repository: askmoina121
+Worker name: askmoina121
+Root directory: /
+Build command: blank
+Deploy command: npx wrangler deploy
+Preview command: npx wrangler preview
+Preview builds: ON
+Cloudflare Access: OFF
+```
 
-`E2B_API_KEY`
+The Worker name is already set to `askmoina121` in `wrangler.jsonc`.
 
-as a Cloudflare Worker Secret under Settings → Variables and Secrets. Do not put this value in GitHub.
+## 4. Add the AI provider secrets
 
-## 6. Open the site
+After the Worker exists:
 
-Cloudflare gives you a `workers.dev` URL. Open it in a normal browser window.
+`Workers & Pages` → `askmoina121` → `Settings` → `Variables and Secrets` → add **Secret**.
 
-You should see the custom `Moina by AskMoina` interface.
+Add:
 
-## 7. First AI request
+```text
+GEMINI_API_KEY
+GROQ_API_KEY
+```
 
-Type a question and press Send. The application calls the Puter browser SDK. If the visitor is not already authenticated, Puter may open its authentication window. The app requests temporary-user creation to reduce signup friction.
+Values:
 
-The provider/model names are intentionally not displayed in the customer UI.
+- `GEMINI_API_KEY`: a Gemini API key created in Google AI Studio.
+- `GROQ_API_KEY`: a Groq API key from the Groq console.
 
-## 8. Test
+Optional:
 
-Try these in order:
+```text
+E2B_API_KEY
+```
 
-1. `Explain why the sky is blue.`
-2. `What is the current population of India?`
-3. `Calculate compound interest on ₹500000 at 12% for 7 years and show the calculation.`
-4. Regenerate an answer.
-5. Reload the page and check History.
+Only add that when you want Python verification.
 
-## 9. Continuous deployment
+Do not add a `PUTER_*`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` secret. This release does not use Puter and does not directly call OpenAI or Anthropic.
 
-Once GitHub integration is connected, pushes to the connected branch can trigger Cloudflare builds/deployments automatically. Cloudflare provides build status and preview/deployment URLs for the integration.
+## 5. Workers AI binding
 
-## 10. If something fails
+The `wrangler.jsonc` file already contains:
 
-- Blank page → check the Cloudflare deployment/build log and confirm `frontend/index.html` was uploaded at the repository root under `frontend/`.
-- AI won't start → allow the authentication popup and reload.
-- Search unavailable → the model should continue with its own knowledge.
-- Python verification unavailable → check whether `E2B_API_KEY` was added; it is optional.
-- Worker tools unavailable → open `/api/v1/health` on the deployed domain.
+```json
+"ai": {
+  "binding": "AI",
+  "remote": true
+}
+```
 
+Cloudflare makes that binding available to Worker code as `env.AI`. If Cloudflare asks you to enable Workers AI, enable it for the account.
 
-## Worker name
+## 6. Deploy
 
-The Cloudflare Worker is configured as `askmoina121` in `wrangler.jsonc`. This controls the default `workers.dev` hostname; the customer-facing product remains branded as **Moina by AskMoina**.
+With the GitHub integration active, commit/pushes to the configured production branch trigger builds.
+
+You can also deploy manually from a local checkout:
+
+```bash
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+## 7. Check health
+
+Open:
+
+```text
+https://askmoina121.<your-workers-subdomain>.workers.dev/api/v1/health
+```
+
+You should receive JSON with the Moina service status and the number of configured AI providers. Provider names are intentionally not returned.
+
+## 8. Test Moina
+
+Try:
+
+```text
+hi
+```
+
+Then:
+
+```text
+Explain why the sky is blue.
+```
+
+Then a current question, for example:
+
+```text
+What are the latest major developments in AI?
+```
+
+Then a calculation:
+
+```text
+Calculate compound interest on ₹500000 at 12% for 7 years.
+```
+
+If E2B is configured, harder calculations/code tasks can trigger Python verification.
+
+## 9. What happens when a provider reaches its limit?
+
+Moina tries the configured providers in priority order. Temporary rate-limit/quota/capacity failures put that provider into a local cooldown and Moina tries the next eligible provider.
+
+This is intentionally conservative. It never creates extra accounts or rotates credentials to evade provider quotas.
+
+Because Workers are distributed, the local cooldown is only a hint. The provider's actual response is authoritative.
+
+## 10. Custom domain later
+
+You can attach `askmoina.com` (or another domain) to the Worker later. Changing the domain does not change the AI provider architecture.

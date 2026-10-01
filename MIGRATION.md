@@ -1,18 +1,52 @@
-# AskMoina 1.2.1
+# Moina 1.3.0 — Multi-Provider Release
 
-## What changed
+## Main change
 
-- Rebranded customer experience from infrastructure/provider terminology to **Moina by AskMoina**.
-- Primary model changed to `openai/gpt-6-astra`.
-- Audit model changed to `anthropic/claude-fable-5-1`.
-- Fallback added: `openai/gpt-oss-120b`.
-- Puter authentication now attempts temporary-user onboarding from a user click.
-- Provider/model names removed from user-facing copy and health output.
-- Reasoning instructions no longer ask the model to expose scratchpad text.
-- Search content remains explicitly untrusted data.
-- Audit failure falls back to the verified primary draft rather than breaking the conversation.
-- Primary inference failure can switch to the fallback model for transient availability/rate-limit style errors.
+The previous Puter.js browser-AI architecture has been removed.
 
-## No AI provider key
+Moina now uses a Cloudflare Worker as the AI gateway and keeps provider credentials server-side.
 
-No Groq, OpenAI, or Anthropic API key is used. Puter.js handles model access in the browser. E2B remains the only server-side secret in this release.
+## Provider stack
+
+```text
+Primary   → Gemini 3.8 Flash
+Fallback  → Groq GPT-OSS-120B
+Fallback  → Cloudflare Nemotron 3 120B A12B
+Verifier  → a different available provider when a hard task needs review
+```
+
+## Product branding
+
+The customer UI is **Moina by AskMoina**. Provider names and implementation details are intentionally omitted from normal product copy.
+
+## Authentication
+
+There is no Puter authentication popup in this release.
+
+## Secrets
+
+Required for the full stack:
+
+```text
+GEMINI_API_KEY
+GROQ_API_KEY
+```
+
+Optional:
+
+```text
+E2B_API_KEY
+```
+
+## Security improvements
+
+- No provider API key is shipped to the browser.
+- Web search output is treated as untrusted evidence.
+- Prompt length and conversation history are server-bounded.
+- Generated Python is policy-checked before E2B execution.
+- Hard tasks keep the primary draft server-side until audit/finalization.
+- Provider fallback is disabled after visible partial output to prevent answer splicing.
+
+## Notes
+
+Free-tier limits are provider-owned and can change. This release increases the available testing runway by using several independent legitimate providers; it does not create unlimited inference.

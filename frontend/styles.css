@@ -43,20 +43,6 @@
     .top-edge-fade{top:68px;height:52px;background:linear-gradient(to bottom,rgba(7,7,7,.48),rgba(7,7,7,.14) 44%,transparent 100%);backdrop-filter:none;-webkit-backdrop-filter:none;mask-image:linear-gradient(to bottom,black 0%,rgba(0,0,0,.7) 32%,rgba(0,0,0,.2) 70%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,black 0%,rgba(0,0,0,.7) 32%,rgba(0,0,0,.2) 70%,transparent 100%)}
     .bottom-edge-fade{bottom:0;height:165px;background:linear-gradient(to top,rgba(7,7,7,.82),rgba(7,7,7,.5) 26%,rgba(7,7,7,.16) 62%,transparent 100%);backdrop-filter:none;-webkit-backdrop-filter:none;mask-image:linear-gradient(to top,black 0%,rgba(0,0,0,.7) 28%,rgba(0,0,0,.18) 68%,transparent 100%);-webkit-mask-image:linear-gradient(to top,black 0%,rgba(0,0,0,.7) 28%,rgba(0,0,0,.18) 68%,transparent 100%)}
 
-    .onboarding{position:fixed;inset:0;display:grid;place-items:center;padding:24px;z-index:100;background:rgba(7,7,7,.94);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);opacity:0;pointer-events:none;visibility:hidden;transition:opacity 220ms var(--ease),visibility 220ms var(--ease)}
-    .onboarding.visible{opacity:1;pointer-events:auto;visibility:visible}
-    .onboarding-card{width:min(520px,100%);padding:48px 44px 42px;text-align:center;border:1px solid rgba(245,245,245,.08);border-radius:22px;background:rgba(16,16,16,.9);box-shadow:0 30px 100px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.03)}
-    .onboarding-brand{display:flex;align-items:baseline;justify-content:center;gap:10px;margin-bottom:26px}
-    .onboarding-name{font-size:20px;font-weight:600;letter-spacing:-.02em;color:var(--white)}
-    .onboarding-by{font-size:11px;color:var(--muted)}
-    .onboarding-card h1{margin:0;font-size:34px;line-height:1.08;letter-spacing:-.04em;font-weight:600}
-    .onboarding-card p{margin:14px auto 0;max-width:410px;font-size:14px;line-height:1.6;color:var(--secondary)}
-    .onboarding-continue{margin-top:28px;min-width:190px;padding:12px 18px;border:1px solid rgba(245,245,245,.12);border-radius:12px;background:#f2f2f2;color:#0b0b0b;font:600 13px/1.2 inherit;cursor:pointer;transition:transform 160ms var(--ease),box-shadow 160ms var(--ease),background 160ms var(--ease)}
-    .onboarding-continue:hover{transform:translateY(-1px);box-shadow:0 12px 30px rgba(0,0,0,.3);background:#fff}
-    .onboarding-continue:active{transform:translateY(0)}
-    .onboarding-continue:disabled{opacity:.6;cursor:wait;transform:none;box-shadow:none}
-    .onboarding-note{font-size:10px!important;color:var(--muted)!important;margin-top:13px!important}
-
     .canvas{position:relative;z-index:10;width:min(920px,calc(100% - 48px));margin:0 auto;padding:96px 0 calc(var(--composer-clearance) + 12px);scroll-padding-bottom:var(--composer-clearance)}
     .state{min-height:calc(100vh - 136px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 0}
     .empty-title{font-size:clamp(36px,5vw,66px);line-height:1.05;letter-spacing:-.055em;font-weight:400;margin:0 0 18px}
@@ -190,9 +176,6 @@
     @media (max-width: 720px){
       .header{height:60px;padding:0 16px}
       .utility span{display:none}
-      .onboarding-card{padding:38px 22px 34px}
-      .onboarding-card h1{font-size:29px}
-      .onboarding-brand{margin-bottom:20px}
 
       .canvas{width:min(100% - 28px, 920px);padding-bottom:calc(var(--composer-clearance) + 8px)}
       .state{min-height:calc(100vh - 118px);padding:14px 0}

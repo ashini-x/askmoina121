@@ -2,10 +2,14 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "askmoina121",
   "main": "./src/index.ts",
-  "compatibility_date": "2026-09-25",
+  "compatibility_date": "2026-09-30",
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
   "assets": {
     "directory": "./frontend",
     "binding": "ASSETS"

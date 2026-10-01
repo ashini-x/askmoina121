@@ -1,15 +1,17 @@
-# Behavior Parity / 1.2.1
+# Behavior — 1.3.0
 
 | Area | Implementation |
 |---|---|
 | Customer brand | Moina by AskMoina |
-| AI access | Puter.js client-side |
-| Primary | GPT-6 Astra |
-| Audit | Claude Fable 5.1 |
-| Fallback | GPT-OSS-120B |
-| Web research | Cloudflare Worker + DuckDuckGo HTML search |
-| Code verification | Cloudflare Worker + E2B |
-| Streaming | Direct Puter.js async stream |
+| AI architecture | Cloudflare Worker multi-provider router |
+| Primary model | Gemini 3.8 Flash |
+| Fallback 1 | Groq GPT-OSS-120B |
+| Fallback 2 | Cloudflare Nemotron 3 120B A12B |
+| Web research | Worker + DuckDuckGo search snippets |
+| Code verification | Worker + E2B, optional |
+| Streaming | SSE from Worker to browser |
 | Local history | Browser localStorage |
-| Prompt cap | 2,000 chars |
-| History cap | 40 messages |
+| Prompt cap | 2,000 characters |
+| History cap | 40 messages / 80K model-facing characters |
+| Puter authentication | Removed |
+| Provider/API names in normal UI | Removed |

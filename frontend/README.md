@@ -1,7 +1,11 @@
 # Moina Frontend
 
-This is the customer-facing Moina interface. It loads the official Puter.js browser library for AI/authentication, but the visible product language remains **Moina by AskMoina**.
+This folder contains the customer-facing Moina UI.
 
-The frontend does not contain developer API keys.
+Provider API keys and model credentials are **not** stored here. The frontend sends chat requests to the same-origin Worker endpoint:
 
-The underlying model names are intentionally kept in code as implementation configuration rather than shown in the UI.
+```text
+/api/v1/chat/stream
+```
+
+The visible product is branded **Moina by AskMoina**.

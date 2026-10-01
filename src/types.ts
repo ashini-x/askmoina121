@@ -3,7 +3,12 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  E2B_API_KEY: string;
+  AI?: {
+    run: (model: string, input: Record<string, unknown>) => Promise<unknown>;
+  };
+  GEMINI_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  E2B_API_KEY?: string;
 }
 
 export interface ToolSearchRequest {
@@ -20,3 +25,10 @@ export interface SearchResult {
   body: string;
   href: string;
 }
+
+export interface ChatRequest {
+  messages: ChatMessage[];
+  mode?: ModeKey;
+}
+
+export type ProviderName = "gemini" | "groq" | "cloudflare";
