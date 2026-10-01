@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#070707" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="Moina by AskMoina — a quiet space for thinking, research, and problem solving." />
+  <title>Moina · AskMoina</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="header">
+      <div aria-label="Moina by AskMoina" class="brand"><span class="brand-name">Moina</span><span class="brand-by">by AskMoina</span><span aria-hidden="true" class="brand-dot"></span></div>
+      <div class="header-actions">
+        <button aria-label="Open history" class="utility" id="historyBtn">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 5v5h5"></path><path d="M12 7v5l3 2"></path></svg>
+          <span>History</span>
+        </button>
+        <button aria-label="Open settings" class="utility" id="settingsBtn">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="m19.4 15 .1.1 1.1.9-1.8 3.1-1.4-.6a7.7 7.7 0 0 1-1.8 1l-.2 1.5h-3.6l-.2-1.5a8 8 0 0 1-1.8-1l-1.4.6-1.8-3.1 1.1-.9.1-.1a8 8 0 0 1 0-2l-.1-.1-1.1-.9 1.8-3.1 1.4.6a7.7 7.7 0 0 1 1.8-1l.2-1.5h3.6l.2 1.5a7.7 7.7 0 0 1 1.8 1l1.4-.6 1.8 3.1-1.1.9-.1.1a8 8 0 0 1 0 2Z"></path></svg>
+          <span>Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <div aria-hidden="true" class="top-edge-fade"></div>
+    <div aria-hidden="true" class="bottom-edge-fade"></div>
+
+    <button class="scroll-latest" id="scrollLatest" type="button" aria-label="Scroll to latest response" title="Scroll to latest response">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+
+    <main class="canvas">
+      <section class="state" id="emptyState">
+        <h1 class="empty-title">Begin with a thought.</h1>
+        <p class="empty-sub">A quiet space for ideas, questions, and whatever comes next.</p>
+        <div aria-label="Suggested thoughts" class="suggestions">
+          <button class="suggestion" data-suggestion="Explore an idea">Explore an idea</button>
+          <button class="suggestion" data-suggestion="Make something">Make something</button>
+          <button class="suggestion" data-suggestion="Solve a problem">Solve a problem</button>
+          <button class="suggestion" data-suggestion="Understand something">Understand something</button>
+        </div>
+      </section>
+
+      <section aria-live="polite" class="conversation" id="conversation"></section>
+
+      <div class="composer-wrap">
+        <div aria-label="Response mode" class="mode-bar" role="tablist">
+          <button aria-selected="false" class="mode" data-mode="logical" role="tab">
+            <span aria-hidden="true" class="mode-glyph"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h10M5 17h7"></path></svg></span>
+            <span class="mode-copy"><span class="mode-name">Logical</span><span class="mode-hint">Reason</span></span>
+          </button>
+          <button aria-selected="true" class="mode active" data-mode="auto" role="tab">
+            <span aria-hidden="true" class="mode-glyph"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+            <span class="mode-copy"><span class="mode-name">Auto</span><span class="mode-hint">Balanced</span></span>
+          </button>
+          <button aria-selected="false" class="mode" data-mode="creative" role="tab">
+            <span aria-hidden="true" class="mode-glyph"><svg viewBox="0 0 24 24"><path d="M12 4.5l1.7 4.3L18 10.5l-4.3 1.7L12 16.5l-1.7-4.3L6 10.5l4.3-1.7L12 4.5Z"></path><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"></path></svg></span>
+            <span class="mode-copy"><span class="mode-name">Creative</span><span class="mode-hint">Explore</span></span>
+          </button>
+        </div>
+
+        <div class="composer" id="composer">
+          <button aria-label="Add attachment" class="plus-btn" id="attachBtn" type="button"><span aria-hidden="true" class="plus"></span></button>
+          <div class="composer-main">
+            <textarea aria-label="Thought input" id="input" maxlength="2000" placeholder="Begin with a thought…" rows="1"></textarea>
+            <div class="composer-bottom">
+              <div class="composer-hint">Enter to submit · Shift + Enter for a new line</div>
+              <div class="composer-controls">
+                <button aria-label="Send thought" class="send disabled" id="sendBtn" type="button">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="m4 4 16 8-16 8 3-8-3-8Z"></path><path d="M7 12h13"></path></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div aria-hidden="true" class="history-backdrop" id="historyBackdrop">
+      <aside aria-label="Conversation history" aria-modal="true" class="history-panel" role="dialog">
+        <div class="history-head">
+          <div class="history-title">History</div>
+          <div class="history-head-actions">
+            <button class="history-new" id="newBtn" type="button">New</button>
+            <button aria-label="Close history" class="close" id="closeHistory" type="button">
+              <svg class="icon" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="history-section" id="historyList"></div>
+      </aside>
+    </div>
+
+    <div aria-live="polite" class="toast" id="toast" role="status"></div>
+  </div>
+
+  <script src="./config.js"></script>
+  <script src="https://js.puter.com/v2/"></script>
+  <script src="./app.js?v=1.2.1-hotfix1"></script>
+</body>
+</html>
