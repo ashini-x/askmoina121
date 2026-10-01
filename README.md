@@ -76,6 +76,6 @@ The browser sends chat history to the Worker. Because that history is client-con
 Provider failover is **quota-aware heuristics**, not a guaranteed quota ledger: Cloudflare Workers can scale across isolates, so in-memory cooldowns are only a local optimization. The provider response remains the source of truth.
 
 
-## 1.4.2 regression fix
+## 1.4.5 verification-hardening fix
 
-Moina now explicitly validates important user premises before accepting proof/theorem requests and repairs generic refusals when a safe factual correction can answer the underlying request. The verification and final-review passes also check proposition/answer consistency so examples or conclusions cannot be presented as confirming a claim they contradict.
+Moina validates important user premises before accepting proof/theorem requests and repairs generic refusals when a safe factual correction can answer the underlying request. The independent verification and final-review passes also audit purported cross-checks themselves: algebraic/GF(2) basis vectors, parameter mappings, completeness claims, and small finite enumerations must be checked against the original constraints before Moina can call them independently verified.

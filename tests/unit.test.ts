@@ -118,6 +118,11 @@ describe("Context isolation and verification protocol", () => {
     expect(verification).toContain("never \"prove\" a false statement");
     expect(finalReview).toContain("premise-and-consistency check");
     expect(finalReview).toContain("do not preserve a generic refusal");
+    expect(verification).toContain("verify the proposed particular vector satisfies the original equations");
+    expect(verification).toContain("prefer a direct exhaustive check");
+    expect(finalReview).toContain("Treat every claimed \"independent verification\"");
+    expect(finalReview).toContain("test the particular solution and each basis vector");
+    expect(finalReview).toContain("explicit exhaustive enumeration is a preferred independent cross-check");
   });
 });
 
