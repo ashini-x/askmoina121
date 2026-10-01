@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>AskMoina Control Plane</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">ASKMOINA</div>
+      <h1>Control Plane</h1>
+      <p>Private developer observability for Moina</p>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn">Refresh</button>
+      <span id="updated">—</span>
+    </div>
+  </header>
+  <main>
+    <section class="grid" id="summary"></section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>System configuration</h2><p>Configuration presence only — secret values are never displayed.</p></div></div>
+      <div id="system"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Provider health</h2><p>Observed provider state from real Moina requests.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Provider</th><th>State</th><th>HTTP</th><th>Error</th><th>Next retry</th><th>Last success</th><th>Latency</th></tr></thead><tbody id="providers"></tbody></table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Active incidents</h2><p>Providers whose latest observed state is not healthy.</p></div></div>
+      <div id="incidents"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Recent requests</h2><p>No prompt text or model output is stored here.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Status</th><th>Pipeline</th><th>Verification</th><th>Duration</th><th>Error</th><th>Trace</th></tr></thead><tbody id="requests"></tbody></table></div>
+    </section>
+    <section class="panel hidden" id="detail">
+      <div class="panel-head"><div><h2>Request trace</h2><p id="detailTitle"></p></div><button id="closeDetail">Close</button></div>
+      <pre id="trace"></pre>
+    </section>
+  </main>
+  <script src="/admin.js" defer></script>
+</body>
+</html>

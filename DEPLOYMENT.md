@@ -11,7 +11,7 @@ Build command: blank
 Deploy command: npx wrangler deploy
 Preview command: npx wrangler preview
 Preview builds: ON
-Cloudflare Access: OFF
+Cloudflare Access: ON for `/admin/*` and `/api/v1/admin/*` only
 ```
 
 Worker secrets:
@@ -20,4 +20,8 @@ Worker secrets:
 GEMINI_API_KEY   required for Gemini
 GROQ_API_KEY     required for Groq fallback
 E2B_API_KEY      optional for Python verification
+ADMIN_EMAILS     developer email allow-list for the Control Plane
 ```
+
+
+Recommended Control Plane variables: `ADMIN_HOSTNAME=admin.askmoina.com` (non-secret) and `ADMIN_EMAILS` (secret).

@@ -9,6 +9,7 @@ import {
   trimHistory,
   verificationSystemPrompt,
 } from "./prompts";
+import { recordProviderEvent, errorClassFrom, type OpsStage, type OpsExecutionContext } from "./telemetry";
 
 export interface ProviderContext {
   provider: ProviderName;
@@ -21,6 +22,9 @@ export interface StreamOptions {
   messages: ReturnType<typeof trimHistory>;
   signal: AbortSignal;
   onText: (text: string) => void;
+  stage: OpsStage;
+  requestId?: string;
+  opsContext?: OpsExecutionContext;
 }
 
 interface ProviderFailure extends Error {
@@ -297,9 +301,14 @@ export async function streamWithFallback(
 
   let lastError: unknown = null;
   for (const provider of candidates) {
+    const startedAt = Date.now();
+    const model = MODEL_CONFIG[provider].model;
+    if (options.requestId && options.opsContext) recordProviderEvent(options.opsContext, env, { requestId: options.requestId, stage: options.stage, kind: "attempt", provider, model });
     try {
       const ctx = await generateFromProvider(provider, options, env);
+      const latencyMs = Date.now() - startedAt;
       cooldowns.delete(provider);
+      if (options.requestId && options.opsContext) recordProviderEvent(options.opsContext, env, { requestId: options.requestId, stage: options.stage, kind: "success", provider, model: ctx.model, latencyMs, status: 200 });
       return ctx;
     } catch (error) {
       if (options.signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
@@ -309,10 +318,12 @@ export async function streamWithFallback(
       const message = typed.message.toLowerCase();
       const temporary = [408, 409, 425, 429, 500, 502, 503, 504].includes(status)
         || /rate.?limit|quota|capacity|temporar|unavailable|insufficient|timeout|overload|exceeded/.test(message);
+      const retryAfterMs = typed.retryAfterMs || (temporary ? 30_000 : undefined);
+      if (options.requestId && options.opsContext) recordProviderEvent(options.opsContext, env, { requestId: options.requestId, stage: options.stage, kind: "failure", provider, model, latencyMs: Date.now() - startedAt, status: typed.status, errorClass: errorClassFrom(typed.message), retryAfterMs });
 
       if (!temporary) continue;
       if (typed.dailyQuota || /rpd|per day|daily|tokens per day|tpd/.test(message)) setCooldown(provider, 6 * 60 * 60 * 1000);
-      else setCooldown(provider, typed.retryAfterMs || 30_000);
+      else setCooldown(provider, retryAfterMs || 30_000);
     }
   }
 
@@ -348,6 +359,8 @@ export async function runPrimary(
   env: Env,
   signal: AbortSignal,
   onText: (text: string) => void,
+  requestId?: string,
+  opsContext?: OpsExecutionContext,
 ): Promise<ProviderContext> {
   return streamWithFallback({
     mode,
@@ -355,6 +368,9 @@ export async function runPrimary(
     messages: buildPrimaryPrompt(messages, searchContext),
     signal,
     onText,
+    stage: "primary",
+    requestId,
+    opsContext,
   }, env);
 }
 
@@ -370,6 +386,8 @@ export async function runIndependentVerification(
   env: Env,
   signal: AbortSignal,
   excludeProvider?: ProviderName,
+  requestId?: string,
+  opsContext?: OpsExecutionContext,
 ): Promise<{ context: ProviderContext; text: string }> {
   const preferred = verificationProviderOrder(
     env,
@@ -383,6 +401,9 @@ export async function runIndependentVerification(
     messages: buildVerificationPrompt(messages, sandboxFeedback, searchContext),
     signal,
     onText: (text) => chunks.push(text),
+    stage: "verification",
+    requestId,
+    opsContext,
   }, env, preferred);
 
   return { context, text: chunks.join("").trim() };
@@ -402,6 +423,8 @@ export async function runFinalReview(
   env: Env,
   signal: AbortSignal,
   preferredProviders: ProviderName[] = ["cloudflare", "gemini", "groq"],
+  requestId?: string,
+  opsContext?: OpsExecutionContext,
 ): Promise<{ context: ProviderContext; text: string }> {
   const chunks: string[] = [];
   const context = await streamWithFallback({
@@ -410,6 +433,9 @@ export async function runFinalReview(
     messages: buildFinalReviewPrompt(messages, draft, referenceAnswer, sandboxFeedback, searchContext),
     signal,
     onText: (text) => chunks.push(text),
+    stage: "final",
+    requestId,
+    opsContext,
   }, env, preferredProviders);
 
   return { context, text: chunks.join("").trim() };

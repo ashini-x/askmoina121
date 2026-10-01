@@ -1,0 +1,21 @@
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmtTime(v){if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):d.toLocaleString()}
+function fmtMs(v){return v==null?'—':`${Math.round(Number(v))} ms`}
+function pill(s,h){return`<span class="pill ${esc(h||'unknown')}">${esc(s||'unknown')}</span>`}
+async function get(path){const r=await fetch(path,{cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw new Error(await r.text()||`HTTP ${r.status}`);return r.json()}
+async function load(){
+ const [o,r,i,sys]=await Promise.all([get('/api/v1/admin/overview'),get('/api/v1/admin/requests?limit=60'),get('/api/v1/admin/incidents'),get('/api/v1/admin/system')]);
+ const s=o.summary||{},n=Number(s.requests||0),ok=Number(s.successful||0),bad=Number(s.failed||0),ver=Number(s.verified||0),rate=n?Math.round(ok/n*100):100;
+ $('#summary').innerHTML=[['System health',bad&&!ok?'DEGRADED':bad?'PARTIAL':'HEALTHY',bad?`${bad} failed in 15m`:`${n} requests in 15m`],['Success rate',`${rate}%`,`${ok}/${n} successful`],['Verified',String(ver),`${Number(s.verification_unavailable||0)} unavailable`],['Avg latency',fmtMs(s.avg_latency_ms),'window: 15 minutes']].map(x=>`<div class="card"><div class="k">${esc(x[0])}</div><div class="v">${esc(x[1])}</div><div class="s">${esc(x[2])}</div></div>`).join('');
+ $('#system').innerHTML = `<div class="system-grid">${[['D1 telemetry',sys.ops_db_configured],['Gemini key',sys.providers_configured?.gemini],['Groq key',sys.providers_configured?.groq],['Cloudflare AI',sys.providers_configured?.cloudflare],['Python sandbox',sys.sandbox_configured],['Admin allow-list',sys.admin_allowlist_configured],['Admin hostname lock',sys.admin_hostname_configured]].map(([label,ok])=>`<div class="system-item"><span>${esc(label)}</span>${pill(ok?'configured':'missing',ok?'healthy':'down')}</div>`).join('')}<div class="system-policy">Retention: ${esc(sys.retention_days)} days · ${esc(sys.telemetry_policy)}</div></div>`;
+ $('#providers').innerHTML=(o.provider_health||[]).map(p=>`<tr><td><strong>${esc(p.provider)}</strong><div class="muted">${esc(p.last_model||'')}</div></td><td>${pill(p.state,p.health)}</td><td>${esc(p.last_status??'—')}</td><td>${esc(p.last_error_class||'—')}</td><td>${fmtTime(p.next_retry_at)}</td><td>${fmtTime(p.last_success_at)}</td><td>${fmtMs(p.last_latency_ms)}</td></tr>`).join('')||'<tr><td colspan="7">No provider telemetry yet.</td></tr>';
+ const ins=i.incidents||[];$('#incidents').innerHTML=ins.length?ins.map(x=>`<div class="incident"><div><strong>${esc(x.provider)}</strong><div class="muted">${esc(x.state)} · HTTP ${esc(x.last_status??'—')} · ${esc(x.last_error_class||'unknown')}</div></div><div class="muted">retry: ${fmtTime(x.next_retry_at)}</div></div>`).join(''):'<div class="muted">No active provider incidents.</div>';
+ $('#requests').innerHTML=(r.requests||[]).map(x=>`<tr><td>${fmtTime(x.started_at)}</td><td>${pill(x.final_status,x.final_status==='error'?'down':x.final_status==='success'?'healthy':'degraded')}</td><td>${esc([x.primary_provider,x.verifier_provider,x.final_provider].filter(Boolean).join(' → ')||'—')}</td><td>${esc(x.verification_status||'—')}</td><td>${fmtMs(x.duration_ms)}</td><td>${esc(x.error_class||'—')}</td><td><button class="trace-btn" data-trace="${esc(x.request_id)}">View</button></td></tr>`).join('')||'<tr><td colspan="7">No requests yet.</td></tr>';
+ document.querySelectorAll('[data-trace]').forEach(b=>b.onclick=()=>showTrace(b.dataset.trace));
+ $('#updated').textContent=`Updated ${new Date().toLocaleTimeString()}`;
+}
+async function showTrace(id){const d=await get(`/api/v1/admin/requests/${encodeURIComponent(id)}`);$('#detail').classList.remove('hidden');$('#detailTitle').textContent=id;$('#trace').textContent=JSON.stringify(d,null,2);$('#detail').scrollIntoView({behavior:'smooth'})}
+$('#refreshBtn').onclick=()=>load().catch(showError);$('#closeDetail').onclick=()=>$('#detail').classList.add('hidden');
+function showError(e){$('#summary').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="k">Control plane</div><div class="v">Unavailable</div><div class="s">${esc(e.message||e)}</div></div>`}
+load().catch(showError);

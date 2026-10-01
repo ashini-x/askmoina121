@@ -9,6 +9,21 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
   E2B_API_KEY?: string;
+  OPS_DB?: D1Database;
+  ADMIN_EMAILS?: string;
+  ADMIN_HOSTNAME?: string;
+}
+
+export interface D1PreparedStatementLike {
+  bind(...values: unknown[]): D1PreparedStatementLike;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ results: T[]; success?: boolean; meta?: Record<string, unknown> }>;
+  run(): Promise<{ success?: boolean; meta?: Record<string, unknown> }>;
+}
+
+export interface D1Database {
+  prepare(query: string): D1PreparedStatementLike;
+  batch(statements: D1PreparedStatementLike[]): Promise<Array<{ success?: boolean; meta?: Record<string, unknown> }>>;
 }
 
 export interface ToolSearchRequest {

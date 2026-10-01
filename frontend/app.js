@@ -791,7 +791,7 @@
         },
       );
 
-      if (!streamedText.trim()) throw new Error("Moina returned an empty response.");
+      if (!streamedText.trim()) throw new Error("Moina could not produce a response this time. Please try again.");
       state.messages[userIndex + 1] = { role: "assistant", content: streamedText.trim() };
       saveConversation();
       state.renderKey = "";

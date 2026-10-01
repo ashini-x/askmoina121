@@ -2,16 +2,32 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "askmoina121",
   "main": "./src/index.ts",
-  "compatibility_date": "2026-09-30",
+  "compatibility_date": "2026-10-02",
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "ADMIN_HOSTNAME": ""
+  },
   "ai": {
     "binding": "AI",
     "remote": true
   },
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["15 3 * * *"]
+  },
   "assets": {
     "directory": "./frontend",
     "binding": "ASSETS"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "OPS_DB",
+      "database_name": "askmoina-ops",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ]
 }
