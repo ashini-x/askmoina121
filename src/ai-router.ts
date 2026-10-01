@@ -80,87 +80,103 @@ function genericFailure(provider: ProviderName, errorValue: unknown): ProviderFa
   return error;
 }
 
-async function consumeSSE(
-  stream: ReadableStream<Uint8Array> | ReadableStream<string>,
-  onEvent: (data: string) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  const reader = stream.getReader() as ReadableStreamDefaultReader<Uint8Array | string>;
-  const decoder = new TextDecoder();
-  let buffer = "";
+function extractText(value: unknown): string {
+  if (!value) return "";
 
-  try {
-    while (true) {
-      if (signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
-      const { value, done } = await reader.read();
-      if (done) break;
-      const chunk = typeof value === "string" ? value : decoder.decode(value, { stream: true });
-      buffer += chunk.replace(/\r/g, "");
+  if (typeof value === "string") return value;
 
-      let boundary = -1;
-      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
-        const frame = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        const data = frame
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trimStart())
-          .join("\n")
-          .trim();
-        if (data) onEvent(data);
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => typeof item === "string")
+      .join("");
+  }
+
+  if (typeof value !== "object") return "";
+
+  const obj = value as Record<string, unknown>;
+
+  if (typeof obj.response === "string") return obj.response;
+  if (typeof obj.text === "string") return obj.text;
+
+  const candidates = obj.candidates;
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      const content = (candidate as Record<string, unknown>)?.content;
+      const parts = (content as Record<string, unknown> | undefined)?.parts;
+      if (Array.isArray(parts)) {
+        const text = parts
+          .filter((part) => {
+            if (!part || typeof part !== "object") return false;
+            const item = part as Record<string, unknown>;
+            return typeof item.text === "string" && item.thought !== true;
+          })
+          .map((part) => String((part as Record<string, unknown>).text))
+          .join("");
+        if (text) return text;
       }
     }
-
-    const tail = buffer.trim();
-    if (tail) {
-      const data = tail
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart())
-        .join("\n")
-        .trim();
-      if (data) onEvent(data);
-    }
-  } finally {
-    try { await reader.cancel(); } catch { /* best effort */ }
   }
-}
 
-function parseProviderText(data: string): string {
-  try {
-    const parsed = JSON.parse(data);
-    if (parsed?.choices?.[0]?.delta?.content) return String(parsed.choices[0].delta.content);
-    if (parsed?.choices?.[0]?.message?.content) return String(parsed.choices[0].message.content);
-    const parts = parsed?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(parts)) {
-      return parts
-        .filter((part: { text?: unknown; thought?: boolean }) => typeof part?.text === "string" && !part?.thought)
-        .map((part: { text: string }) => part.text)
-        .join("");
+  const choices = obj.choices;
+  if (Array.isArray(choices)) {
+    for (const choice of choices) {
+      const item = choice as Record<string, unknown>;
+      const message = item.message as Record<string, unknown> | undefined;
+      const delta = item.delta as Record<string, unknown> | undefined;
+      const messageText = extractText(message?.content);
+      if (messageText) return messageText;
+      const deltaText = extractText(delta?.content);
+      if (deltaText) return deltaText;
+      const direct = typeof item.text === "string" ? item.text : "";
+      if (direct) return direct;
     }
-    if (typeof parsed?.response === "string") return parsed.response;
-    if (typeof parsed?.text === "string") return parsed.text;
-  } catch {
-    // Ignore non-JSON keep-alive events.
   }
+
+  const outputText = obj.output_text;
+  if (typeof outputText === "string") return outputText;
+
+  const output = obj.output;
+  if (Array.isArray(output)) {
+    const text = output
+      .filter((item) => item && typeof item === "object")
+      .map((item) => {
+        const record = item as Record<string, unknown>;
+        return typeof record.text === "string" ? record.text : "";
+      })
+      .filter(Boolean)
+      .join("");
+    if (text) return text;
+  }
+
   return "";
 }
 
-async function streamGemini(options: StreamOptions, env: Env): Promise<ProviderContext> {
+/**
+ * Emit a complete provider answer in chunks to keep the client UI responsive.
+ * We intentionally use non-streaming provider calls here until every provider
+ * adapter is proven against its current response format. The browser still
+ * receives incremental SSE deltas from Moina.
+ */
+function emitInChunks(text: string, onText: (text: string) => void): void {
+  const value = String(text || "");
+  if (!value) return;
+  const chunkSize = 700;
+  for (let i = 0; i < value.length; i += chunkSize) {
+    onText(value.slice(i, i + chunkSize));
+  }
+}
+
+async function generateGemini(options: StreamOptions, env: Env): Promise<ProviderContext> {
   const provider: ProviderName = "gemini";
   if (!env.GEMINI_API_KEY) throw genericFailure(provider, "Gemini is not configured.");
   const model = MODEL_CONFIG[provider].model;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
-  const contents = [
-    ...options.messages.slice(0, -1).map((message) => ({
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [{ text: message.content }],
-    })),
-    {
-      role: "user",
-      parts: [{ text: options.messages.at(-1)?.content || "" }],
-    },
-  ];
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+
+  const contents = options.messages.map((message) => ({
+    role: message.role === "assistant" ? "model" : "user",
+    parts: [{ text: message.content }],
+  }));
+
   const body = {
     systemInstruction: { parts: [{ text: options.systemPrompt }] },
     contents,
@@ -183,25 +199,27 @@ async function streamGemini(options: StreamOptions, env: Env): Promise<ProviderC
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw failure(provider, response, `Gemini request failed (${response.status}): ${text.slice(0, 500)}`);
+    throw failure(provider, response, `Gemini request failed (${response.status}): ${text.slice(0, 600)}`);
   }
-  if (!response.body) throw genericFailure(provider, "Gemini returned no stream.");
 
-  let emitted = false;
-  await consumeSSE(response.body, (data) => {
-    if (data === "[DONE]") return;
-    const text = parseProviderText(data);
-    if (text) {
-      emitted = true;
-      options.onText(text);
-    }
-  }, options.signal);
-  if (!emitted) throw genericFailure(provider, "Gemini returned no answer text.");
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw genericFailure(provider, "Gemini returned invalid JSON.");
+  }
 
+  const text = extractText(payload).trim();
+  if (!text) {
+    const reason = (payload as { promptFeedback?: { blockReason?: string } })?.promptFeedback?.blockReason;
+    throw genericFailure(provider, reason ? `Gemini blocked the request: ${reason}.` : "Gemini returned no answer text.");
+  }
+
+  emitInChunks(text, options.onText);
   return { provider, model };
 }
 
-async function streamGroq(options: StreamOptions, env: Env): Promise<ProviderContext> {
+async function generateGroq(options: StreamOptions, env: Env): Promise<ProviderContext> {
   const provider: ProviderName = "groq";
   if (!env.GROQ_API_KEY) throw genericFailure(provider, "Groq is not configured.");
   const model = MODEL_CONFIG[provider].model;
@@ -214,10 +232,11 @@ async function streamGroq(options: StreamOptions, env: Env): Promise<ProviderCon
     body: JSON.stringify({
       model,
       messages: [{ role: "system", content: options.systemPrompt }, ...options.messages],
-      stream: true,
+      stream: false,
       temperature: options.mode === "creative" ? 0.65 : 0.15,
       top_p: 0.9,
       reasoning_effort: "high",
+      include_reasoning: false,
       max_completion_tokens: 8192,
     }),
     signal: options.signal,
@@ -225,31 +244,31 @@ async function streamGroq(options: StreamOptions, env: Env): Promise<ProviderCon
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw failure(provider, response, `Groq request failed (${response.status}): ${text.slice(0, 500)}`);
+    throw failure(provider, response, `Groq request failed (${response.status}): ${text.slice(0, 600)}`);
   }
-  if (!response.body) throw genericFailure(provider, "Groq returned no stream.");
 
-  let emitted = false;
-  await consumeSSE(response.body, (data) => {
-    if (data === "[DONE]") return;
-    const text = parseProviderText(data);
-    if (text) {
-      emitted = true;
-      options.onText(text);
-    }
-  }, options.signal);
-  if (!emitted) throw genericFailure(provider, "Groq returned no answer text.");
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw genericFailure(provider, "Groq returned invalid JSON.");
+  }
 
+  const text = extractText(payload).trim();
+  if (!text) throw genericFailure(provider, "Groq returned no answer text.");
+
+  emitInChunks(text, options.onText);
   return { provider, model };
 }
 
-async function streamCloudflare(options: StreamOptions, env: Env): Promise<ProviderContext> {
+async function generateCloudflare(options: StreamOptions, env: Env): Promise<ProviderContext> {
   const provider: ProviderName = "cloudflare";
   if (!env.AI?.run) throw genericFailure(provider, "Cloudflare AI is not configured.");
   const model = MODEL_CONFIG[provider].model;
+
   const result = await env.AI.run(model, {
     messages: [{ role: "system", content: options.systemPrompt }, ...options.messages],
-    stream: true,
+    stream: false,
     temperature: options.mode === "creative" ? 0.65 : 0.15,
     top_p: 0.9,
     max_tokens: 8192,
@@ -259,85 +278,64 @@ async function streamCloudflare(options: StreamOptions, env: Env): Promise<Provi
     },
   });
 
-  if (result && typeof (result as ReadableStream<Uint8Array>).getReader === "function") {
-    let emitted = false;
-    await consumeSSE(result as ReadableStream<Uint8Array>, (data) => {
-      if (data === "[DONE]") return;
-      const text = parseProviderText(data);
-      if (text) {
-        emitted = true;
-        options.onText(text);
-      }
-    }, options.signal);
-    if (!emitted) throw genericFailure(provider, "Cloudflare AI returned no answer text.");
-    return { provider, model };
-  }
-
-  const text = parseProviderText(JSON.stringify(result));
+  const text = extractText(result).trim();
   if (!text) throw genericFailure(provider, "Cloudflare AI returned no answer text.");
-  options.onText(text);
+
+  emitInChunks(text, options.onText);
   return { provider, model };
 }
 
-async function streamFromProvider(provider: ProviderName, options: StreamOptions, env: Env): Promise<ProviderContext> {
-  if (provider === "gemini") return streamGemini(options, env);
-  if (provider === "groq") return streamGroq(options, env);
-  return streamCloudflare(options, env);
+async function generateFromProvider(provider: ProviderName, options: StreamOptions, env: Env): Promise<ProviderContext> {
+  if (provider === "gemini") return generateGemini(options, env);
+  if (provider === "groq") return generateGroq(options, env);
+  return generateCloudflare(options, env);
 }
 
 export function availableProviders(env: Env): ProviderName[] {
   return (["gemini", "groq", "cloudflare"] as ProviderName[]).filter((provider) => providerAvailable(provider, env));
 }
 
-export async function streamWithFallback(options: StreamOptions, env: Env, preferred: ProviderName[] = ["gemini", "groq", "cloudflare"]): Promise<ProviderContext> {
+export async function streamWithFallback(
+  options: StreamOptions,
+  env: Env,
+  preferred: ProviderName[] = ["gemini", "groq", "cloudflare"],
+): Promise<ProviderContext> {
   const candidates = preferred.filter((provider) => providerAvailable(provider, env) && !isCoolingDown(provider));
-  if (!candidates.length) {
-    throw new Error("Moina is temporarily at capacity. Please try again later.");
-  }
+  if (!candidates.length) throw new Error("Moina is temporarily at capacity. Please try again later.");
 
   let lastError: unknown = null;
-  for (const provider of candidates) {
-    let emittedAny = false;
-    const guardedOptions: StreamOptions = {
-      ...options,
-      onText: (text) => {
-        emittedAny = true;
-        options.onText(text);
-      },
-    };
 
+  for (const provider of candidates) {
     try {
-      const ctx = await streamFromProvider(provider, guardedOptions, env);
+      const ctx = await generateFromProvider(provider, options, env);
       cooldowns.delete(provider);
       return ctx;
     } catch (error) {
       if (options.signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
-      if (emittedAny) {
-        // Never splice a second provider into an already-visible partial answer.
-        // For hard requests, callers keep the draft server-side, so fallback remains safe.
-        throw error;
-      }
-      const typed = (error as ProviderFailure);
+
+      const typed = genericFailure(provider, error);
       lastError = typed;
-      const status = Number(typed?.status || 0);
-      const message = String(typed?.message || error).toLowerCase();
-      const retry = typed?.retryAfterMs;
+      const status = Number(typed.status || 0);
+      const message = typed.message.toLowerCase();
       const isTemporary = [408, 409, 429, 500, 502, 503, 504].includes(status)
         || /rate.?limit|quota|capacity|temporar|unavailable|insufficient|timeout|overload/.test(message);
-      if (!isTemporary) throw error;
 
-      if (typed?.dailyQuota || /rpd|per day|daily|tokens per day|tpd/.test(message)) {
+      if (!isTemporary) {
+        // Configuration or semantic errors should not prevent a later fallback
+        // provider from being tried, but we record the failure.
+        continue;
+      }
+
+      if (typed.dailyQuota || /rpd|per day|daily|tokens per day|tpd/.test(message)) {
         setCooldown(provider, 6 * 60 * 60 * 1000);
       } else {
-        setCooldown(provider, retry || 30_000);
+        setCooldown(provider, typed.retryAfterMs || 30_000);
       }
     }
   }
 
   const typed = lastError as ProviderFailure | null;
-  if (typed?.dailyQuota) {
-    throw new Error("Moina is temporarily at capacity. Please try again later.");
-  }
+  if (typed?.dailyQuota) throw new Error("Moina is temporarily at capacity. Please try again later.");
   throw new Error("Moina could not complete that request. Please try again.");
 }
 

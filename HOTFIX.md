@@ -1,5 +1,5 @@
-# AskMoina 1.2.1 Hotfix
+# 1.3.1 Provider Reliability Hotfix
 
-This package fixes a frontend JavaScript initialization issue that prevented composer, history, suggestions, and other controls from binding. The missing client-side UI/helper functions have been restored.
+The previous build could show “Moina returned an empty response” because provider-specific streaming response formats were not normalized consistently.
 
-The HTML script reference includes a cache-busting query string so the corrected app.js is fetched after deployment.
+This release uses reliable non-streaming upstream provider responses, extracts final answer text across Gemini, Groq, and Cloudflare response shapes, then streams normalized text chunks to the browser.

@@ -1,3 +1,7 @@
+## 1.3.1 Provider reliability hotfix
+
+Provider responses are normalized using non-streaming upstream calls and then emitted as SSE chunks to the browser. This avoids provider-specific SSE parsing differences while preserving Moina's incremental UI.
+
 # Moina Model Routing
 
 ## Goal
