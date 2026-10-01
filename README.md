@@ -74,3 +74,8 @@ See `UPLOAD_AND_DEPLOY.md` for the exact click-by-click process.
 The browser sends chat history to the Worker. Because that history is client-controlled, the Worker converts it into inert transcript data before inference instead of giving browser-supplied assistant messages privileged role authority. Search output and sandbox results are wrapped as untrusted evidence. Model-generated Python is validated and, when E2B is configured, executed in a separate sandbox with a timeout and cleanup.
 
 Provider failover is **quota-aware heuristics**, not a guaranteed quota ledger: Cloudflare Workers can scale across isolates, so in-memory cooldowns are only a local optimization. The provider response remains the source of truth.
+
+
+## 1.4.1 regression fix
+
+Moina now explicitly validates important user premises before accepting proof/theorem requests and repairs generic refusals when a safe factual correction can answer the underlying request. The verification and final-review passes also check proposition/answer consistency so examples or conclusions cannot be presented as confirming a claim they contradict.

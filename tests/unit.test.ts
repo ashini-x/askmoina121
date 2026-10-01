@@ -12,7 +12,7 @@ import {
 import { sanitizeInput, validatePythonCode } from "../src/security/guardrails";
 import { formatSearchContext } from "../src/tools/search";
 import { shouldAudit, shouldSearch } from "../src/ai-router";
-import { buildConversationContext, buildFinalReviewPrompt, buildVerificationPrompt } from "../src/prompts";
+import { buildConversationContext, buildFinalReviewPrompt, buildVerificationPrompt, finalReviewSystemPrompt, primarySystemPrompt, verificationSystemPrompt } from "../src/prompts";
 
 describe("Moina limits", () => {
   it("allows practical prompt sizes while keeping hard server bounds", () => {
@@ -107,5 +107,16 @@ describe("Context isolation and verification protocol", () => {
     expect(prompt).toContain("DRAFT_ANSWER_UNTRUSTED");
     expect(prompt).toContain("INDEPENDENT_REFERENCE_ANSWER_UNTRUSTED");
     expect(prompt).toContain("do not assume the draft is correct merely because its conclusion matches");
+  });
+
+  it("requires premise validation instead of blind compliance", () => {
+    const primary = primarySystemPrompt("auto");
+    const verification = verificationSystemPrompt("auto");
+    const finalReview = finalReviewSystemPrompt("auto");
+
+    expect(primary).toContain("Validate important premises before building an answer on them");
+    expect(verification).toContain("never \"prove\" a false statement");
+    expect(finalReview).toContain("premise-and-consistency check");
+    expect(finalReview).toContain("do not preserve a generic refusal");
   });
 });
