@@ -1,5 +1,14 @@
-# 1.3.1 Provider Reliability Hotfix
+# 1.4.0 intelligence hardening
 
-The previous build could show “Moina returned an empty response” because provider-specific streaming response formats were not normalized consistently.
+This release supersedes the 1.3.x provider parsing hotfixes with a general-purpose verification pipeline.
 
-This release uses reliable non-streaming upstream provider responses, extracts final answer text across Gemini, Groq, and Cloudflare response shapes, then streams normalized text chunks to the browser.
+Key changes:
+- prompt-injection phrases are no longer blocked at the input layer;
+- history is serialized as untrusted transcript data;
+- independent verification no longer receives the primary draft;
+- final review compares the primary draft with an independent reference;
+- empty final-review responses fall back safely to a non-empty reference/draft;
+- request-body size is enforced after reading the actual bytes;
+- provider requests receive a timeout;
+- live-search calls honor request cancellation;
+- prompt limits are increased for real code and long-form use.

@@ -1,28 +1,16 @@
-const ADVERSARIAL_PATTERNS = [
-  /ignore\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|earlier|above)\s+(?:instructions|rules|messages)/i,
-  /disregard\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|earlier|above)\s+(?:instructions|rules|messages)/i,
-  /forget\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|earlier|above)\s+(?:instructions|rules|messages)/i,
-  /you\s+are\s+now\s+(?:DAN|jailbreak|unrestricted|developer|system)/i,
-  /(?:override|replace|bypass|disable)\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|message|instructions|rules)/i,
-  /bypass\s+(?:security|safety)\s+filters?/i,
-  /reveal\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|message|instructions)/i,
-  /show\s+(?:me\s+)?(?:the\s+)?(?:hidden|secret|internal)\s+(?:prompt|instructions|chain[-\s]?of[-\s]?thought)/i,
-  /print\s+(?:your|the)\s+(?:system|developer)\s+(?:prompt|message)/i,
-];
-
+/**
+ * Input normalization is intentionally non-blocking.
+ *
+ * Prompt-injection phrases are not rejected at the transport layer because a
+ * legitimate user may ask about jailbreaks, system prompts, adversarial ML,
+ * security research, or quote an injection as data. Authority separation is
+ * handled in the system prompt and by keeping tool/source/history content inert.
+ */
 export function sanitizeInput(prompt: string): string {
-  const normalized = String(prompt ?? "")
+  return String(prompt ?? "")
     .normalize("NFKC")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .trim();
-
-  for (const pattern of ADVERSARIAL_PATTERNS) {
-    if (pattern.test(normalized)) {
-      throw new Error("Security Guardrail Triggered: Adversarial prompt input flagged.");
-    }
-  }
-
-  return normalized;
 }
 
 const PYTHON_DENY_PATTERNS = [

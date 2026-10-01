@@ -1,4 +1,4 @@
-# Moina 1.3.0 — Multi-Provider Release
+# Moina 1.4.0 — General Intelligence + Verification Hardening
 
 ## Main change
 
@@ -50,3 +50,12 @@ E2B_API_KEY
 ## Notes
 
 Free-tier limits are provider-owned and can change. This release increases the available testing runway by using several independent legitimate providers; it does not create unlimited inference.
+
+## 1.4.0 changes
+
+- Input keyword blocking removed so benign security/jailbreak discussions are not rejected.
+- Browser history is re-encoded as inert transcript data.
+- The verifier no longer receives the primary draft.
+- A final editor adjudicates the draft against the independent reference answer.
+- Requests can carry up to 12,000 characters.
+- Search and provider calls honor cancellation/timeouts.

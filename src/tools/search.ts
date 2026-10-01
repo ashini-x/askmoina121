@@ -51,7 +51,7 @@ function parseResults(html: string, maxResults: number): SearchResult[] {
   return results.filter((item) => item.title || item.body || item.href);
 }
 
-export async function webSearch(query: string, maxResults = SEARCH_RESULT_LIMIT): Promise<SearchResult[]> {
+export async function webSearch(query: string, maxResults = SEARCH_RESULT_LIMIT, signal?: AbortSignal): Promise<SearchResult[]> {
   const cleanQuery = String(query ?? "").trim().slice(0, SEARCH_QUERY_MAX_CHARS);
   if (!cleanQuery) return [];
 
@@ -61,9 +61,10 @@ export async function webSearch(query: string, maxResults = SEARCH_RESULT_LIMIT)
     url.searchParams.set("kl", "wt-wt");
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "AskMoina/1.2 (+https://askmoina.com)",
+        "User-Agent": "AskMoina/1.4 (+https://askmoina.com)",
         Accept: "text/html,application/xhtml+xml",
       },
+      signal,
     });
     if (!response.ok) return [];
     return parseResults(await response.text(), Math.max(1, Math.min(maxResults, SEARCH_RESULT_LIMIT)));

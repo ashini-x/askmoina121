@@ -1,5 +1,13 @@
 import type { Env, ModeKey, ProviderName } from "./types";
-import { auditSystemPrompt, buildAuditPrompt, buildPrimaryPrompt, primarySystemPrompt, trimHistory } from "./prompts";
+import {
+  buildFinalReviewPrompt,
+  buildPrimaryPrompt,
+  buildVerificationPrompt,
+  finalReviewSystemPrompt,
+  primarySystemPrompt,
+  trimHistory,
+  verificationSystemPrompt,
+} from "./prompts";
 
 export interface ProviderContext {
   provider: ProviderName;
@@ -22,6 +30,7 @@ interface ProviderFailure extends Error {
 }
 
 const cooldowns = new Map<ProviderName, number>();
+const PROVIDER_TIMEOUT_MS = 45_000;
 
 const MODEL_CONFIG: Record<ProviderName, { model: string; label: string }> = {
   gemini: { model: "gemini-3.8-flash", label: "Moina" },
@@ -63,7 +72,7 @@ function parseRetryAfter(response: Response): number | undefined {
 function failure(provider: ProviderName, response: Response, message: string): ProviderFailure {
   const retryAfterMs = parseRetryAfter(response);
   const lower = message.toLowerCase();
-  const dailyQuota = /rpd|per day|daily|quota|tokens per day|tpd/.test(lower);
+  const dailyQuota = /rpd|per day|daily|quota|tokens per day|tpd|daily limit/.test(lower);
   const error = new Error(message) as ProviderFailure;
   error.provider = provider;
   error.status = response.status;
@@ -80,37 +89,53 @@ function genericFailure(provider: ProviderName, errorValue: unknown): ProviderFa
   return error;
 }
 
+async function withTimeout<T>(promiseFactory: () => Promise<T>, timeoutMs: number, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Provider request exceeded ${Math.ceil(timeoutMs / 1000)}s.`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promiseFactory(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function extractText(value: unknown): string {
   if (!value) return "";
-
   if (typeof value === "string") return value;
 
   if (Array.isArray(value)) {
     return value
-      .filter((item) => typeof item === "string")
+      .map((item) => extractText(item))
+      .filter(Boolean)
       .join("");
   }
 
   if (typeof value !== "object") return "";
-
   const obj = value as Record<string, unknown>;
 
   if (typeof obj.response === "string") return obj.response;
   if (typeof obj.text === "string") return obj.text;
+  if (typeof obj.output_text === "string") return obj.output_text;
 
   const candidates = obj.candidates;
   if (Array.isArray(candidates)) {
     for (const candidate of candidates) {
-      const content = (candidate as Record<string, unknown>)?.content;
+      const item = candidate as Record<string, unknown>;
+      const content = item.content;
       const parts = (content as Record<string, unknown> | undefined)?.parts;
       if (Array.isArray(parts)) {
         const text = parts
-          .filter((part) => {
-            if (!part || typeof part !== "object") return false;
-            const item = part as Record<string, unknown>;
-            return typeof item.text === "string" && item.thought !== true;
-          })
-          .map((part) => String((part as Record<string, unknown>).text))
+          .filter((part) => part && typeof part === "object")
+          .filter((part) => (part as Record<string, unknown>).thought !== true)
+          .map((part) => typeof (part as Record<string, unknown>).text === "string"
+            ? String((part as Record<string, unknown>).text)
+            : "")
+          .filter(Boolean)
           .join("");
         if (text) return text;
       }
@@ -119,29 +144,24 @@ function extractText(value: unknown): string {
 
   const choices = obj.choices;
   if (Array.isArray(choices)) {
-    for (const choice of choices) {
-      const item = choice as Record<string, unknown>;
-      const message = item.message as Record<string, unknown> | undefined;
-      const delta = item.delta as Record<string, unknown> | undefined;
-      const messageText = extractText(message?.content);
-      if (messageText) return messageText;
-      const deltaText = extractText(delta?.content);
-      if (deltaText) return deltaText;
-      const direct = typeof item.text === "string" ? item.text : "";
-      if (direct) return direct;
-    }
+    const text = choices
+      .map((choice) => {
+        const item = choice as Record<string, unknown>;
+        const message = item.message as Record<string, unknown> | undefined;
+        const delta = item.delta as Record<string, unknown> | undefined;
+        return extractText(message?.content) || extractText(delta?.content) || (typeof item.text === "string" ? item.text : "");
+      })
+      .filter(Boolean)
+      .join("");
+    if (text) return text;
   }
-
-  const outputText = obj.output_text;
-  if (typeof outputText === "string") return outputText;
 
   const output = obj.output;
   if (Array.isArray(output)) {
     const text = output
-      .filter((item) => item && typeof item === "object")
       .map((item) => {
-        const record = item as Record<string, unknown>;
-        return typeof record.text === "string" ? record.text : "";
+        if (!item || typeof item !== "object") return "";
+        return extractText(item);
       })
       .filter(Boolean)
       .join("");
@@ -151,19 +171,11 @@ function extractText(value: unknown): string {
   return "";
 }
 
-/**
- * Emit a complete provider answer in chunks to keep the client UI responsive.
- * We intentionally use non-streaming provider calls here until every provider
- * adapter is proven against its current response format. The browser still
- * receives incremental SSE deltas from Moina.
- */
 function emitInChunks(text: string, onText: (text: string) => void): void {
   const value = String(text || "");
   if (!value) return;
   const chunkSize = 700;
-  for (let i = 0; i < value.length; i += chunkSize) {
-    onText(value.slice(i, i + chunkSize));
-  }
+  for (let i = 0; i < value.length; i += chunkSize) onText(value.slice(i, i + chunkSize));
 }
 
 async function generateGemini(options: StreamOptions, env: Env): Promise<ProviderContext> {
@@ -171,11 +183,7 @@ async function generateGemini(options: StreamOptions, env: Env): Promise<Provide
   if (!env.GEMINI_API_KEY) throw genericFailure(provider, "Gemini is not configured.");
   const model = MODEL_CONFIG[provider].model;
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-
-  const contents = options.messages.map((message) => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: [{ text: message.content }],
-  }));
+  const contents = options.messages.map((message) => ({ role: "user", parts: [{ text: message.content }] }));
 
   const body = {
     systemInstruction: { parts: [{ text: options.systemPrompt }] },
@@ -187,28 +195,20 @@ async function generateGemini(options: StreamOptions, env: Env): Promise<Provide
     },
   };
 
-  const response = await fetch(endpoint, {
+  const response = await withTimeout(() => fetch(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": env.GEMINI_API_KEY,
-    },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY as string },
     body: JSON.stringify(body),
     signal: options.signal,
-  });
+  }), PROVIDER_TIMEOUT_MS, options.signal);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw failure(provider, response, `Gemini request failed (${response.status}): ${text.slice(0, 600)}`);
+    throw failure(provider, response, `Gemini request failed (${response.status}): ${text.slice(0, 800)}`);
   }
 
   let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    throw genericFailure(provider, "Gemini returned invalid JSON.");
-  }
-
+  try { payload = await response.json(); } catch { throw genericFailure(provider, "Gemini returned invalid JSON."); }
   const text = extractText(payload).trim();
   if (!text) {
     const reason = (payload as { promptFeedback?: { blockReason?: string } })?.promptFeedback?.blockReason;
@@ -223,7 +223,7 @@ async function generateGroq(options: StreamOptions, env: Env): Promise<ProviderC
   const provider: ProviderName = "groq";
   if (!env.GROQ_API_KEY) throw genericFailure(provider, "Groq is not configured.");
   const model = MODEL_CONFIG[provider].model;
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const response = await withTimeout(() => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -231,7 +231,7 @@ async function generateGroq(options: StreamOptions, env: Env): Promise<ProviderC
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "system", content: options.systemPrompt }, ...options.messages],
+      messages: [{ role: "system", content: options.systemPrompt }, { role: "user", content: options.messages[0]?.content || "" }],
       stream: false,
       temperature: options.mode === "creative" ? 0.65 : 0.15,
       top_p: 0.9,
@@ -240,20 +240,15 @@ async function generateGroq(options: StreamOptions, env: Env): Promise<ProviderC
       max_completion_tokens: 8192,
     }),
     signal: options.signal,
-  });
+  }), PROVIDER_TIMEOUT_MS, options.signal);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw failure(provider, response, `Groq request failed (${response.status}): ${text.slice(0, 600)}`);
+    throw failure(provider, response, `Groq request failed (${response.status}): ${text.slice(0, 800)}`);
   }
 
   let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    throw genericFailure(provider, "Groq returned invalid JSON.");
-  }
-
+  try { payload = await response.json(); } catch { throw genericFailure(provider, "Groq returned invalid JSON."); }
   const text = extractText(payload).trim();
   if (!text) throw genericFailure(provider, "Groq returned no answer text.");
 
@@ -266,21 +261,17 @@ async function generateCloudflare(options: StreamOptions, env: Env): Promise<Pro
   if (!env.AI?.run) throw genericFailure(provider, "Cloudflare AI is not configured.");
   const model = MODEL_CONFIG[provider].model;
 
-  const result = await env.AI.run(model, {
-    messages: [{ role: "system", content: options.systemPrompt }, ...options.messages],
+  const result = await withTimeout(() => env.AI!.run(model, {
+    messages: [{ role: "system", content: options.systemPrompt }, { role: "user", content: options.messages[0]?.content || "" }],
     stream: false,
     temperature: options.mode === "creative" ? 0.65 : 0.15,
     top_p: 0.9,
     max_tokens: 8192,
-    chat_template_kwargs: {
-      enable_thinking: true,
-      force_nonempty_content: true,
-    },
-  });
+    chat_template_kwargs: { enable_thinking: true, force_nonempty_content: true },
+  }), PROVIDER_TIMEOUT_MS, options.signal);
 
   const text = extractText(result).trim();
   if (!text) throw genericFailure(provider, "Cloudflare AI returned no answer text.");
-
   emitInChunks(text, options.onText);
   return { provider, model };
 }
@@ -304,7 +295,6 @@ export async function streamWithFallback(
   if (!candidates.length) throw new Error("Moina is temporarily at capacity. Please try again later.");
 
   let lastError: unknown = null;
-
   for (const provider of candidates) {
     try {
       const ctx = await generateFromProvider(provider, options, env);
@@ -312,31 +302,26 @@ export async function streamWithFallback(
       return ctx;
     } catch (error) {
       if (options.signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
-
       const typed = genericFailure(provider, error);
       lastError = typed;
       const status = Number(typed.status || 0);
       const message = typed.message.toLowerCase();
-      const isTemporary = [408, 409, 429, 500, 502, 503, 504].includes(status)
-        || /rate.?limit|quota|capacity|temporar|unavailable|insufficient|timeout|overload/.test(message);
+      const temporary = [408, 409, 425, 429, 500, 502, 503, 504].includes(status)
+        || /rate.?limit|quota|capacity|temporar|unavailable|insufficient|timeout|overload|exceeded/.test(message);
 
-      if (!isTemporary) {
-        // Configuration or semantic errors should not prevent a later fallback
-        // provider from being tried, but we record the failure.
-        continue;
-      }
-
-      if (typed.dailyQuota || /rpd|per day|daily|tokens per day|tpd/.test(message)) {
-        setCooldown(provider, 6 * 60 * 60 * 1000);
-      } else {
-        setCooldown(provider, typed.retryAfterMs || 30_000);
-      }
+      if (!temporary) continue;
+      if (typed.dailyQuota || /rpd|per day|daily|tokens per day|tpd/.test(message)) setCooldown(provider, 6 * 60 * 60 * 1000);
+      else setCooldown(provider, typed.retryAfterMs || 30_000);
     }
   }
 
   const typed = lastError as ProviderFailure | null;
   if (typed?.dailyQuota) throw new Error("Moina is temporarily at capacity. Please try again later.");
   throw new Error("Moina could not complete that request. Please try again.");
+}
+
+function preferredDiverseProviders(env: Env, excluded: ProviderName | undefined, preferred: ProviderName[]): ProviderName[] {
+  return preferred.filter((provider) => provider !== excluded && providerAvailable(provider, env));
 }
 
 export async function runPrimary(
@@ -356,27 +341,57 @@ export async function runPrimary(
   }, env);
 }
 
-export async function runAudit(
+/**
+ * Independent reference pass: intentionally does NOT receive the draft.
+ * This prevents the verifier from anchoring on the first model's answer.
+ */
+export async function runIndependentVerification(
   messages: ReturnType<typeof trimHistory>,
   mode: ModeKey,
-  draft: string,
   sandboxFeedback: string,
   searchContext: string,
   env: Env,
   signal: AbortSignal,
   excludeProvider?: ProviderName,
-  onText?: (text: string) => void,
-): Promise<ProviderContext> {
-  const preferred = availableProviders(env).filter((provider) => provider !== excludeProvider);
-  if (!preferred.length) throw new Error("No independent verification path is currently available.");
-
-  return streamWithFallback({
+): Promise<{ context: ProviderContext; text: string }> {
+  const preferred = preferredDiverseProviders(env, excludeProvider, ["groq", "gemini", "cloudflare"]);
+  const chunks: string[] = [];
+  const context = await streamWithFallback({
     mode,
-    systemPrompt: auditSystemPrompt(mode),
-    messages: buildAuditPrompt(messages, draft, sandboxFeedback, searchContext),
+    systemPrompt: verificationSystemPrompt(mode),
+    messages: buildVerificationPrompt(messages, sandboxFeedback, searchContext),
     signal,
-    onText: onText || (() => undefined),
-  }, env, preferred);
+    onText: (text) => chunks.push(text),
+  }, env, preferred.length ? preferred : availableProviders(env));
+
+  return { context, text: chunks.join("").trim() };
+}
+
+/**
+ * Final editor compares the draft and an independent reference answer.
+ * With three providers, this can use a third provider distinct from both passes.
+ */
+export async function runFinalReview(
+  messages: ReturnType<typeof trimHistory>,
+  mode: ModeKey,
+  draft: string,
+  referenceAnswer: string,
+  sandboxFeedback: string,
+  searchContext: string,
+  env: Env,
+  signal: AbortSignal,
+  preferredProviders: ProviderName[] = ["cloudflare", "gemini", "groq"],
+): Promise<{ context: ProviderContext; text: string }> {
+  const chunks: string[] = [];
+  const context = await streamWithFallback({
+    mode,
+    systemPrompt: finalReviewSystemPrompt(mode),
+    messages: buildFinalReviewPrompt(messages, draft, referenceAnswer, sandboxFeedback, searchContext),
+    signal,
+    onText: (text) => chunks.push(text),
+  }, env, preferredProviders);
+
+  return { context, text: chunks.join("").trim() };
 }
 
 export function shouldSearch(prompt: string): boolean {
@@ -384,12 +399,31 @@ export function shouldSearch(prompt: string): boolean {
   if (!clean) return false;
   if (/^(hi|hello|hey|thanks|thank you|ok|okay|good morning|good evening|good night)\W*$/i.test(clean)) return false;
   if (/^\d+(?:\s*[+\-*/x×÷]\s*\d+)+\s*\??$/i.test(clean)) return false;
-  return clean.length >= 80
-    || /\b(latest|today|current|recent|news|research|source|sources|cite|citation|price|stock|weather|who is|what happened|as of|this week|this month|2026|2027)\b/i.test(clean);
+
+  const live = /\b(latest|today|current|right now|recent|news|breaking|as of|this week|this month|this year|tomorrow|yesterday|live|real[- ]time|price|stock|weather|forecast|who is|what happened|source|sources|cite|citation|reference|look up|search for|research)\b/i.test(clean);
+  const webLike = /https?:\/\/|www\.|\b20\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/i.test(clean);
+  const highStakes = /\b(medical|medicine|symptom|diagnosis|treatment|legal|law|lawsuit|contract|tax|investment|investing|financial|bank|security|vulnerability|cybersecurity)\b/i.test(clean);
+  return live || webLike || highStakes;
 }
 
-export function shouldAudit(prompt: string, draft: string, sandboxFeedback: string): boolean {
-  const hardSignal = /\b(prove|derive|calculate|debug|review|audit|analy[sz]e|compare|contrast|design|architect|research|verify|validate|critique|evaluate|refactor|optimi[sz]e|code|equation|algorithm|legal|medical|financial)\b/i.test(prompt);
-  const codeSignal = /```|\b(function|class|typescript|javascript|python|sql|regex)\b/i.test(prompt);
-  return Boolean(sandboxFeedback) || hardSignal || codeSignal || prompt.length > 700 || draft.length > 7000;
+export function shouldAudit(prompt: string, draft = "", sandboxFeedback = ""): boolean {
+  const normalized = prompt.trim();
+  const hardSignal = /\b(prove|derive|calculate|debug|review|audit|analy[sz]e|compare|contrast|design|architect|research|verify|validate|critique|evaluate|refactor|optimi[sz]e|code|equation|algorithm|legal|medical|financial|tax|security)\b/i.test(normalized);
+  const completenessSignal = /\b(exactly|all|every|complete|completely|systematically|enumerate|enumeration|decision tree|case[s]?|constraint[s]?|counterexample|global optimum|prove that|without missing|independently|double-check|check every|find any error)\b/i.test(normalized);
+  const codeSignal = /```|\b(function|class|typescript|javascript|python|sql|regex|stack trace|compiler error)\b/i.test(normalized);
+  const numericSignal = /\b\d+(?:\.\d+)?\b/.test(normalized) && /[=+\-*/%<>]|\bhow many\b|\bmaximize\b|\bminimum\b|\bmaximum\b/i.test(normalized);
+  const highStakes = /\b(medical|medicine|symptom|diagnosis|treatment|legal|law|lawsuit|contract|tax|investment|investing|financial|bank|security|vulnerability|cybersecurity)\b/i.test(normalized);
+  const current = shouldSearch(normalized);
+
+  return Boolean(
+    sandboxFeedback
+    || hardSignal
+    || completenessSignal
+    || codeSignal
+    || numericSignal
+    || highStakes
+    || current
+    || normalized.length > 650
+    || draft.length > 7000,
+  );
 }

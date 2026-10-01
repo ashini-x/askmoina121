@@ -1,6 +1,6 @@
 # Moina by AskMoina
 
-A multi-provider, Cloudflare Worker-based AI application with a custom consumer UI.
+A multi-provider, Cloudflare Worker-based AI application with a custom consumer UI and a layered verification pipeline.
 
 ## What it does
 
@@ -10,7 +10,7 @@ Moina keeps the product surface provider-neutral while routing inference through
 - **Groq `openai/gpt-oss-120b`** — high-quality fallback with fast inference.
 - **Cloudflare Workers AI `@cf/nvidia/nemotron-3-120b-a12b`** — final fallback when the Cloudflare AI binding is available.
 
-Harder requests can additionally use isolated E2B Python verification and a second provider for an independent review. Simple requests use one model call to conserve free capacity.
+Harder, current, high-stakes, and precision-sensitive requests use a layered pipeline: primary draft, draft-free independent reference pass, and final editor; E2B Python verification is added when a safe Python block is present. Simple requests use one model call to conserve available capacity.
 
 ## User experience
 
@@ -71,6 +71,6 @@ See `UPLOAD_AND_DEPLOY.md` for the exact click-by-click process.
 
 ## Architecture notes
 
-The browser sends chat history to the Worker. The Worker validates, trims, and re-encodes that history before inference. Search output is wrapped as untrusted evidence. Model-generated Python is validated and, when E2B is configured, executed in a separate sandbox with a timeout and cleanup.
+The browser sends chat history to the Worker. Because that history is client-controlled, the Worker converts it into inert transcript data before inference instead of giving browser-supplied assistant messages privileged role authority. Search output and sandbox results are wrapped as untrusted evidence. Model-generated Python is validated and, when E2B is configured, executed in a separate sandbox with a timeout and cleanup.
 
 Provider failover is **quota-aware heuristics**, not a guaranteed quota ledger: Cloudflare Workers can scale across isolates, so in-memory cooldowns are only a local optimization. The provider response remains the source of truth.

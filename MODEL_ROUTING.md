@@ -1,51 +1,71 @@
-## 1.3.1 Provider reliability hotfix
+# Moina Model Routing — 1.4.0
 
-Provider responses are normalized using non-streaming upstream calls and then emitted as SSE chunks to the browser. This avoids provider-specific SSE parsing differences while preserving Moina's incremental UI.
+## General-purpose routing
 
-# Moina Model Routing
-
-## Goal
-
-Use a small set of strong providers and consume their legitimate free/available capacity without making the customer choose a provider.
-
-## Primary path
-
-Moina starts with:
+Moina is designed for arbitrary user prompts rather than a fixed benchmark. The server classifies requests with lightweight deterministic signals and then chooses the least expensive pipeline that is appropriate:
 
 ```text
-gemini-3.8-flash
+simple request
+  -> primary answer
+
+reasoning / code / current / high-stakes / precision request
+  -> primary draft
+  -> optional isolated Python verification
+  -> independent reference pass (without seeing the draft)
+  -> final editor compares draft + reference + evidence
 ```
 
-with high thinking for Logical/Auto modes and medium thinking for Creative mode.
+This fixes the earlier self-audit weakness where the second model saw the draft first and could anchor on it.
 
-## Fallback path
+## Why the verifier is draft-free
 
-If the primary provider is temporarily unavailable before any answer text is visible, Moina can fall back to:
+The independent verification pass receives the original request, conversation context, web evidence, and sandbox feedback, but **not the primary draft**. Its job is to reconstruct the answer independently. The final editor then adjudicates between the draft and the independent reference.
+
+That means a correct final conclusion no longer causes Moina to assume every intermediate claim in the draft was correct.
+
+## Provider diversity
+
+The preferred primary order is:
 
 ```text
-openai/gpt-oss-120b
+gemini -> groq -> cloudflare
 ```
 
-and then:
+The independent pass prefers a different provider:
 
 ```text
-@cf/nvidia/nemotron-3-120b-a12b
+groq -> gemini -> cloudflare
 ```
 
-## Independent review
+The final editor prefers a third provider when one is available:
 
-Hard requests can use a second provider after the primary draft has been created. The audit prompt explicitly excludes the primary provider so the review is not simply the same model called twice.
+```text
+cloudflare -> gemini -> groq
+```
 
-Simple requests avoid the audit call to conserve inference capacity.
-
-## Why there is no permanent “global ranking” number
-
-Model leaderboards change, and a model can be strongest for one task while another is stronger for coding, vision, or long-context reasoning. Moina therefore hardcodes a **small, vetted provider set** for this release rather than trying to infer intelligence from model names or context size.
-
-## Failover safety
-
-Moina only fails over on temporary/rate-limit/quota/capacity style failures. If a provider has already emitted user-visible answer text and then fails, Moina does **not** splice another provider's answer into the partial response. That prevents malformed mixed answers.
+This is a routing preference, not a claim that one model is universally better than another. Provider response failures, quota errors, timeouts, and temporary capacity errors can trigger failover.
 
 ## Quota philosophy
 
-Moina uses one legitimate provider credential/account per provider. It does not create or rotate extra accounts/keys to bypass limits.
+Moina uses one legitimate account/key per configured provider. It does not create, rotate, or coordinate extra identities to bypass provider limits.
+
+The in-memory cooldown map is only a local optimization in a serverless environment. It is not a global quota ledger; the provider's response remains authoritative.
+
+## Prompt-injection handling
+
+Moina 1.4.0 removes the old regex that rejected user messages containing phrases such as “ignore previous instructions”. A person may legitimately ask about prompt injection, jailbreaks, system prompts, or security research.
+
+Instead:
+
+- user text is normalized, not keyword-blocked;
+- browser-supplied history is serialized as inert transcript data rather than privileged assistant messages;
+- search results and sandbox output are explicitly labeled untrusted data;
+- system instructions tell each reasoning pass not to follow commands embedded in those data blocks.
+
+## Search behavior
+
+Live search is triggered by current/time-sensitive requests, explicit research/source requests, URLs/date-like references, and selected high-stakes topics. Long creative prompts no longer trigger search merely because they are long.
+
+## Output buffering
+
+Simple requests can stream the primary answer immediately. Reviewed requests buffer the draft until verification and final editing are complete, so the user never receives a partial answer that is later silently replaced by a different answer.

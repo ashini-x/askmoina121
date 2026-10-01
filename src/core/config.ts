@@ -1,8 +1,8 @@
-export const MAX_PROMPT_CHARS = 2000;
-export const MAX_REQUEST_BODY_BYTES = 350_000;
+export const MAX_PROMPT_CHARS = 12000;
+export const MAX_REQUEST_BODY_BYTES = 650_000;
 export const MAX_HISTORY_MESSAGES = 40;
-export const MAX_MESSAGE_CHARS = 12000;
-export const MAX_MODEL_HISTORY_CHARS = 80000;
+export const MAX_MESSAGE_CHARS = 20000;
+export const MAX_MODEL_HISTORY_CHARS = 100000;
 export const MAX_SANDBOX_CODE_CHARS = 6000;
 export const SANDBOX_TIMEOUT_MS = 15000;
 

@@ -3,6 +3,7 @@ import {
   CHAT_REQUESTS_PER_WINDOW,
   MAX_HISTORY_MESSAGES,
   MAX_MESSAGE_CHARS,
+  MAX_MODEL_HISTORY_CHARS,
   MAX_PROMPT_CHARS,
   MAX_REQUEST_BODY_BYTES,
   MAX_SANDBOX_CODE_CHARS,
@@ -11,7 +12,14 @@ import {
   SEARCH_RESULT_LIMIT,
   SANDBOX_REQUESTS_PER_WINDOW,
 } from "./core/config";
-import { availableProviders, runAudit, runPrimary, shouldAudit, shouldSearch } from "./ai-router";
+import {
+  availableProviders,
+  runFinalReview,
+  runIndependentVerification,
+  runPrimary,
+  shouldAudit,
+  shouldSearch,
+} from "./ai-router";
 import { sanitizeInput } from "./security/guardrails";
 import { formatSearchContext, webSearch } from "./tools/search";
 import { runPythonSandbox } from "./tools/sandbox";
@@ -77,13 +85,14 @@ function corsHeaders(request: Request): HeadersInit {
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
-  const contentLength = Number(request.headers.get("Content-Length") || 0);
-  if (contentLength > MAX_REQUEST_BODY_BYTES) {
-    throw new Error("Request is too large.");
-  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.byteLength > MAX_REQUEST_BODY_BYTES) throw new Error("Request is too large.");
   try {
-    return await request.json() as Record<string, unknown>;
-  } catch {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON body must be an object.");
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof Error && error.message === "JSON body must be an object.") throw error;
     throw new Error("Invalid JSON body.");
   }
 }
@@ -104,20 +113,35 @@ function normalizeMode(raw: unknown): ModeKey {
   return raw === "logical" || raw === "creative" ? raw : "auto";
 }
 
-function isHardAbort(request: Request): AbortSignal {
-  return request.signal;
-}
-
-function sseEvent(controller: ReadableStreamDefaultController<Uint8Array>, encoder: TextEncoder, event: string, data: unknown): void {
+function sseEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  event: string,
+  data: unknown,
+): void {
   controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 }
 
+function safeCodeBlock(draft: string): string | null {
+  const match = String(draft).match(/```(?:python|py)\s*([\s\S]*?)```/i);
+  return match?.[1]?.trim() || null;
+}
+
+function sandboxContext(result: Awaited<ReturnType<typeof runPythonSandbox>>): string {
+  return result.status === "success"
+    ? `[SANDBOX RUNTIME OUTPUT]\n${result.stdout || "(no textual output)"}`
+    : `[SANDBOX ERROR]\n${result.stderr || "Sandbox execution failed."}`;
+}
+
 async function chatStream(request: Request, env: Env): Promise<Response> {
-  if (!consumeRateLimit(request, "chat")) return json({ error: "Moina is receiving too many requests right now. Please try again shortly." }, 429, corsHeaders(request));
+  if (!consumeRateLimit(request, "chat")) {
+    return json({ error: "Moina is receiving too many requests right now. Please try again shortly." }, 429, corsHeaders(request));
+  }
 
   const body = await readJson(request);
   const messages = normalizeHistory(body.messages);
   const mode = normalizeMode(body.mode);
+
   if (!messages.length || messages[messages.length - 1].role !== "user") {
     return json({ error: "A user message is required." }, 400, corsHeaders(request));
   }
@@ -129,13 +153,16 @@ async function chatStream(request: Request, env: Env): Promise<Response> {
 
   const originHeaders = corsHeaders(request);
   const encoder = new TextEncoder();
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const emit = (event: string, data: unknown) => sseEvent(controller, encoder, event, data);
+
       (async () => {
         try {
-          const signal = isHardAbort(request);
+          const signal = request.signal;
           emit("phase", { phase: "initializing" });
+
           const providers = availableProviders(env);
           if (!providers.length) throw new Error("Moina is not configured yet. Add at least one AI provider secret and redeploy.");
 
@@ -143,76 +170,102 @@ async function chatStream(request: Request, env: Env): Promise<Response> {
           if (shouldSearch(prompt)) {
             emit("phase", { phase: "searching" });
             try {
-              const results = await webSearch(prompt, SEARCH_RESULT_LIMIT);
+              const results = await webSearch(prompt, SEARCH_RESULT_LIMIT, signal);
               searchContext = formatSearchContext(results);
               emit("sources", { sources: results });
             } catch (error) {
+              if (signal.aborted) throw new DOMException("Request cancelled.", "AbortError");
               console.error("Search error", error);
               emit("notice", { message: "Moina continued without live web evidence." });
             }
           }
 
-          let shouldReview = shouldAudit(prompt, "", "");
+          const history = trimHistory(messages, MAX_MODEL_HISTORY_CHARS);
           let draft = "";
           emit("phase", { phase: "synthesizing" });
-          const primary = await runPrimary(
-            trimHistory(messages, 80000),
-            mode,
-            searchContext,
-            env,
-            signal,
-            (text) => {
-              draft += text;
-              if (!shouldReview) emit("delta", { text });
-            },
-          );
+
+          const primary = await runPrimary(history, mode, searchContext, env, signal, (text) => {
+            draft += text;
+            // Simple requests can stream immediately. Reviewed requests remain
+            // buffered so the user never sees an answer that is later replaced.
+            if (!shouldAudit(prompt)) emit("delta", { text });
+          });
 
           if (!draft.trim()) throw new Error("Moina returned an empty response.");
-          shouldReview = shouldReview || shouldAudit(prompt, draft, "");
 
-          let finalText = draft.trim();
-          let sandboxFeedback = "";
-
-          if (shouldReview) {
-            emit("phase", { phase: "sandbox" });
-            const match = draft.match(/```python\s*([\s\S]*?)```/i);
-            if (match && env.E2B_API_KEY) {
-              const result = await runPythonSandbox(match[1].trim(), env.E2B_API_KEY, MAX_SANDBOX_CODE_CHARS);
-              sandboxFeedback = result.status === "success"
-                ? `[SANDBOX RUNTIME OUTPUT]\n${result.stdout || "(no textual output)"}`
-                : `[SANDBOX ERROR]\n${result.stderr || "Sandbox execution failed."}`;
-            }
-
-            emit("phase", { phase: "auditing" });
-            let audited = "";
-            try {
-              await runAudit(
-                trimHistory(messages, 80000),
-                mode,
-                draft,
-                sandboxFeedback,
-                searchContext,
-                env,
-                signal,
-                primary.provider,
-                (text) => {
-                  audited += text;
-                  emit("delta", { text });
-                },
-              );
-              if (audited.trim()) finalText = audited.trim();
-            } catch (error) {
-              console.error("Audit path unavailable", error);
-              if (draft.trim()) {
-                emit("notice", { message: "Moina used its verified primary answer." });
-                // The draft was intentionally withheld from the client while the audit was running.
-                emit("delta", { text: draft });
-              }
-            }
+          const needsReview = shouldAudit(prompt, draft, "");
+          if (!needsReview) {
+            emit("complete", { ok: true });
+            controller.close();
+            return;
           }
 
-          void finalText;
+          let sandboxFeedback = "";
+          const code = safeCodeBlock(draft);
+          if (code && env.E2B_API_KEY) {
+            emit("phase", { phase: "sandbox" });
+            const result = await runPythonSandbox(code, env.E2B_API_KEY, MAX_SANDBOX_CODE_CHARS);
+            sandboxFeedback = sandboxContext(result);
+          }
 
+          emit("phase", { phase: "verifying" });
+          let referenceAnswer = "";
+          let verifierProvider = primary.provider;
+          try {
+            const independent = await runIndependentVerification(
+              history,
+              mode,
+              sandboxFeedback,
+              searchContext,
+              env,
+              signal,
+              primary.provider,
+            );
+            referenceAnswer = independent.text;
+            verifierProvider = independent.context.provider;
+          } catch (error) {
+            console.error("Independent verification unavailable", error);
+          }
+
+          // If no independent pass is available, the primary answer is still
+          // useful. We do not pretend it was independently verified.
+          if (!referenceAnswer.trim()) {
+            emit("notice", { message: "Moina completed the answer without an independent verification pass." });
+            emit("delta", { text: draft });
+            emit("complete", { ok: true });
+            controller.close();
+            return;
+          }
+
+          emit("phase", { phase: "finalizing" });
+          let finalText = "";
+          try {
+            const preferredFinalProviders = [
+              ...(["cloudflare", "gemini", "groq"] as const),
+              primary.provider,
+              verifierProvider,
+            ].filter((value, index, list) => list.indexOf(value) === index && value !== verifierProvider);
+
+            const reviewed = await runFinalReview(
+              history,
+              mode,
+              draft,
+              referenceAnswer,
+              sandboxFeedback,
+              searchContext,
+              env,
+              signal,
+              preferredFinalProviders,
+            );
+            finalText = reviewed.text;
+          } catch (error) {
+            console.error("Final review unavailable", error);
+          }
+
+          if (!finalText.trim()) finalText = referenceAnswer.trim() || draft.trim();
+          if (!finalText.trim()) throw new Error("Moina returned an empty response.");
+
+          emit("delta", { text: finalText });
           emit("complete", { ok: true });
           controller.close();
         } catch (error) {
@@ -227,7 +280,7 @@ async function chatStream(request: Request, env: Env): Promise<Response> {
       })();
     },
     cancel() {
-      // The request's AbortSignal handles upstream cancellation.
+      // The request AbortSignal handles upstream cancellation.
     },
   });
 
@@ -251,12 +304,13 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/v1/health" && request.method === "GET") {
-      return json({ status: "ok", service: "moina", aiProvidersConfigured: availableProviders(env).length }, 200, cors);
+      return json({ status: "ok", service: "moina" }, 200, cors);
     }
 
     if (url.pathname === "/api/v1/chat/stream" && request.method === "POST") {
-      const origin = allowedOrigin(request) || new URL(request.url).origin;
-      if (!origin) return json({ error: "Origin not allowed." }, 403, cors);
+      if (request.headers.get("Origin") && !allowedOrigin(request)) {
+        return json({ error: "Origin not allowed." }, 403, cors);
+      }
       try {
         return await chatStream(request, env);
       } catch (error) {
@@ -270,8 +324,8 @@ export default {
       try {
         const body = await readJson(request);
         const query = sanitizeInput(typeof body.query === "string" ? body.query : "").slice(0, SEARCH_QUERY_MAX_CHARS);
-        if (!query || query.length > MAX_PROMPT_CHARS) throw new Error(`Search query exceeds the ${MAX_PROMPT_CHARS}-character limit.`);
-        const results = await webSearch(query, SEARCH_RESULT_LIMIT);
+        if (!query) throw new Error("Search query is empty.");
+        const results = await webSearch(query, SEARCH_RESULT_LIMIT, request.signal);
         return json({ query, results, context: formatSearchContext(results) }, 200, cors);
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : String(error) }, 400, cors);
