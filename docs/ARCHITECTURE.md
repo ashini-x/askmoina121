@@ -8,7 +8,7 @@ The application is branded as **Moina by AskMoina**. Provider and model names ar
 
 1. User submits a prompt from the Moina UI.
 2. Browser-side guardrails normalize and reject obvious adversarial patterns.
-3. Puter authentication is initialized from the user's click when required; temporary-user creation is requested to reduce onboarding friction.
+3. Moina presents a custom onboarding screen. The Continue action initializes Puter authentication and requests temporary-user creation when available.
 4. Worker web search gathers a small set of current source snippets.
 5. Search snippets are inserted into the model context as explicitly untrusted data.
 6. GPT-6 Astra produces the primary response with high reasoning effort.

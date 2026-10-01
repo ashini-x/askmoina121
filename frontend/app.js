@@ -693,31 +693,80 @@ Your job is to turn a draft into the most accurate final answer possible.
 - Output ONLY the final user-facing answer; do not discuss the auditing process.`;
   }
 
-  async function ensurePuterReady() {
+  async function getPuterAuthState() {
     if (!window.puter?.ai?.chat) {
       throw new Error("Moina could not initialize. Please reload the page and try again.");
     }
-
     const auth = window.puter.auth;
-    if (!auth?.isSignedIn || typeof auth.signIn !== "function") return;
-
+    if (!auth?.isSignedIn) return { signedIn: false, user: null };
     const signedIn = await Promise.resolve(auth.isSignedIn());
-    if (signedIn) return;
+    let user = null;
+    if (signedIn && typeof auth.getUser === "function") {
+      try { user = await auth.getUser(); } catch {}
+    }
+    return { signedIn: Boolean(signedIn), user };
+  }
 
+  function setOnboardingVisible(visible, busy = false) {
+    const panel = qs("#onboarding");
+    const button = qs("#onboardingContinue");
+    if (!panel) return;
+    panel.classList.toggle("visible", visible);
+    panel.setAttribute("aria-hidden", visible ? "false" : "true");
+    if (button) {
+      button.disabled = busy;
+      button.textContent = busy ? "Preparing Moina…" : "Continue with Moina";
+    }
+  }
+
+  async function initializeMoinaAccess() {
+    const state = await getPuterAuthState();
+    if (state.signedIn) {
+      setOnboardingVisible(false);
+      return true;
+    }
+    setOnboardingVisible(true);
+    return false;
+  }
+
+  async function beginMoinaAccess() {
+    if (!window.puter?.auth?.signIn) {
+      showToast("Moina could not initialize. Please reload the page and try again.");
+      return false;
+    }
+
+    const button = qs("#onboardingContinue");
+    if (button?.disabled) return false;
+
+    setOnboardingVisible(true, true);
     try {
-      // Called directly from the user's send click. Temporary-user creation
-      // keeps onboarding friction low; users can attach a permanent account later.
-      await auth.signIn({ attempt_temp_user_creation: true });
+      await window.puter.auth.signIn({ attempt_temp_user_creation: true });
+      const state = await getPuterAuthState();
+      if (!state.signedIn) throw new Error("Moina access was not completed.");
+      setOnboardingVisible(false);
+      showToast("Moina is ready");
+      return true;
     } catch (error) {
       const code = String(error?.error || error?.code || "");
+      setOnboardingVisible(true, false);
       if (code === "popup_blocked") {
-        throw new Error("Moina needs its sign-in window. Please allow popups for this site and try again.");
+        showToast("Please allow the sign-in window for this site, then try again.");
+      } else if (code === "auth_window_closed") {
+        showToast("Moina sign-in was cancelled.");
+      } else {
+        showToast("Moina access could not be initialized. Please try again.");
       }
-      if (code === "auth_window_closed") {
-        throw new Error("Moina sign-in was cancelled. Try again when you're ready.");
-      }
-      throw new Error("Moina access could not be initialized. Please try again.");
+      return false;
     }
+  }
+
+  async function ensurePuterReady() {
+    const state = await getPuterAuthState();
+    if (!state.signedIn) {
+      setOnboardingVisible(true);
+      throw new Error("Continue with Moina before starting a conversation.");
+    }
+    return true;
   }
 
   function isModelAvailabilityError(error) {
@@ -995,6 +1044,11 @@ Your job is to turn a draft into the most accurate final answer possible.
   qs("#newBtn")?.addEventListener("click", newConversation);
   qs("#settingsBtn")?.addEventListener("click", () => showToast("Moina Intelligence · Research + Verification"));
 
+  // Authentication / onboarding
+  qs("#onboardingContinue")?.addEventListener("click", () => {
+    beginMoinaAccess();
+  });
+
   // Modes
   qsa(".mode").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1016,18 +1070,23 @@ Your job is to turn a draft into the most accurate final answer possible.
     resizeInput();
     updateSendState();
   });
-  input?.addEventListener("keydown", (event) => {
+  input?.addEventListener("keydown", async (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      runChat(input.value);
+      const prompt = input.value;
+      const access = await initializeMoinaAccess();
+      if (!access) return;
       input.value = "";
       resizeInput();
       updateSendState();
+      runChat(prompt);
     }
   });
-  qs("#sendBtn")?.addEventListener("click", () => {
+  qs("#sendBtn")?.addEventListener("click", async () => {
     if (!input?.value.trim()) return;
     const prompt = input.value;
+    const access = await initializeMoinaAccess();
+    if (!access) return;
     input.value = "";
     resizeInput();
     updateSendState();
@@ -1063,6 +1122,9 @@ Your job is to turn a draft into the most accurate final answer possible.
 
   renderConversation(true);
   renderHistory();
+  initializeMoinaAccess().catch(() => {
+    setOnboardingVisible(true);
+  });
   requestAnimationFrame(() => {
     resizeInput();
     updateComposerHeight();

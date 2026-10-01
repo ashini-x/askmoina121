@@ -16,7 +16,7 @@ The underlying provider/model names are implementation details and are intention
 
 ## Authentication
 
-The application uses Puter.js browser authentication. On the user's send action, AskMoina requests temporary-user creation to reduce onboarding friction. Puter's sign-in popup may still appear because browser authentication is controlled by Puter.
+The application uses Puter.js browser authentication. Moina presents a custom onboarding screen first; the Continue button requests Puter temporary-user creation when possible, before the user starts chatting. Puter's sign-in popup may still appear because browser authentication is controlled by Puter.
 
 ## Secrets
 
