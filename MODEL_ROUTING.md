@@ -1,4 +1,4 @@
-# Moina Model Routing — 1.4.0
+# Moina Model Routing — 1.4.2
 
 ## General-purpose routing
 
@@ -53,7 +53,7 @@ The in-memory cooldown map is only a local optimization in a serverless environm
 
 ## Prompt-injection handling
 
-Moina 1.4.0 removes the old regex that rejected user messages containing phrases such as “ignore previous instructions”. A person may legitimately ask about prompt injection, jailbreaks, system prompts, or security research.
+Moina 1.4.2 removes the old regex that rejected user messages containing phrases such as “ignore previous instructions”. A person may legitimately ask about prompt injection, jailbreaks, system prompts, or security research.
 
 Instead:
 

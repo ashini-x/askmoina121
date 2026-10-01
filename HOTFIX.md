@@ -1,4 +1,4 @@
-# 1.4.0 intelligence hardening
+# 1.4.2 intelligence hardening
 
 This release supersedes the 1.3.x provider parsing hotfixes with a general-purpose verification pipeline.
 

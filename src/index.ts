@@ -25,7 +25,7 @@ import { formatSearchContext, webSearch } from "./tools/search";
 import { runPythonSandbox } from "./tools/sandbox";
 import type { ChatMessage, Env, ModeKey } from "./types";
 import { JSON_HEADERS } from "./http/response";
-import { trimHistory } from "./prompts";
+import { classifySpecialPrompt, specialPromptResponse, trimHistory } from "./prompts";
 
 const requestCounters = new Map<string, { chat: number; search: number; sandbox: number; resetAt: number }>();
 
@@ -162,6 +162,15 @@ async function chatStream(request: Request, env: Env): Promise<Response> {
         try {
           const signal = request.signal;
           emit("phase", { phase: "initializing" });
+
+          const special = classifySpecialPrompt(prompt);
+          if (special) {
+            emit("phase", { phase: "finalizing" });
+            emit("delta", { text: specialPromptResponse(special) });
+            emit("complete", { ok: true });
+            controller.close();
+            return;
+          }
 
           const providers = availableProviders(env);
           if (!providers.length) throw new Error("Moina is not configured yet. Add at least one AI provider secret and redeploy.");

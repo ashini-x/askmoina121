@@ -3,6 +3,7 @@ import {
   buildFinalReviewPrompt,
   buildPrimaryPrompt,
   buildVerificationPrompt,
+  isIdentityPrompt,
   finalReviewSystemPrompt,
   primarySystemPrompt,
   trimHistory,
@@ -423,6 +424,7 @@ export function shouldAudit(prompt: string, draft = "", sandboxFeedback = ""): b
     || numericSignal
     || highStakes
     || current
+    || isIdentityPrompt(normalized)
     || normalized.length > 650
     || draft.length > 7000,
   );
