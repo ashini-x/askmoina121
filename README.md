@@ -97,7 +97,7 @@ For production, use a separate hostname such as `admin.askmoina.com`, set `ADMIN
 
 The Control Plane uses GitHub OAuth and does not require Cloudflare Zero Trust. See `CONTROL_PLANE_AUTH.md`.
 
-## 1.5.5 routing fix
+## 1.5.6 routing fix
 
 Protected admin pages and API routes use Cloudflare Workers Static Assets `run_worker_first` so authentication executes before static asset serving. Public static assets remain asset-first.
 

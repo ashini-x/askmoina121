@@ -21,7 +21,7 @@ The Worker requires a Cloudflare Access identity for admin routes and also requi
 ## Important limitation
 Provider status is an observed-health signal, not a hidden-quota oracle. Moina knows a provider is rate-limited/quota-limited/capacity-limited when an actual request returns a corresponding failure (or a provider reset header that we record). It does not guess a provider's private remaining quota.
 
-## 1.5.5 routing fix
+## 1.5.6 routing fix
 
 Protected admin pages and API routes use Cloudflare Workers Static Assets `run_worker_first` so authentication executes before static asset serving. Public static assets remain asset-first.
 

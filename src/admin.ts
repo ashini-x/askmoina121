@@ -287,7 +287,22 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   if (auth instanceof Response) return auth;
 
   if (url.pathname === "/admin" || url.pathname === "/admin/") {
-    const assetResponse = await env.ASSETS.fetch(new Request(new URL("/admin.html", request.url), request));
+    // Fetch the static dashboard explicitly through the Assets binding.
+    // Do not pass the incoming Request as the RequestInit argument: that is
+    // not a valid RequestInit shape and can throw in the Workers runtime.
+    let assetResponse: Response;
+    try {
+      assetResponse = await env.ASSETS.fetch(new URL("https://assets.local/admin.html"));
+    } catch (error) {
+      console.error("[control-plane] dashboard asset fetch failed", error);
+      return json({ error: "Control Plane dashboard temporarily unavailable." }, 503);
+    }
+
+    if (!assetResponse.ok) {
+      console.error("[control-plane] dashboard asset returned", assetResponse.status);
+      return json({ error: "Control Plane dashboard temporarily unavailable." }, 503);
+    }
+
     const headers = new Headers(assetResponse.headers);
     for (const [key, value] of htmlHeaders()) headers.set(key, value);
     headers.set("Cache-Control", "private, no-store, max-age=0");

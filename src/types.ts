@@ -2,7 +2,7 @@ export type ModeKey = "logical" | "auto" | "creative";
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export interface Env {
-  ASSETS: { fetch(request: Request): Promise<Response> };
+  ASSETS: { fetch(request: Request | URL | string): Promise<Response> };
   AI?: {
     run: (model: string, input: Record<string, unknown>) => Promise<unknown>;
   };
