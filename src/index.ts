@@ -376,6 +376,8 @@ export default {
       // Keep operational telemetry bounded. User prompts and model outputs are not stored.
       await env.OPS_DB.prepare(`DELETE FROM provider_events WHERE timestamp < datetime('now', '-30 days')`).run();
       await env.OPS_DB.prepare(`DELETE FROM request_sessions WHERE started_at < datetime('now', '-30 days')`).run();
+      await env.OPS_DB.prepare(`DELETE FROM admin_sessions WHERE expires_at < datetime('now') OR revoked_at < datetime('now', '-7 days')`).run();
+      await env.OPS_DB.prepare(`DELETE FROM admin_oauth_states WHERE expires_at < datetime('now')`).run();
     } catch (error) {
       console.error('[ops] telemetry cleanup failed', error);
     }
@@ -392,7 +394,7 @@ export default {
     }
 
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/v1/admin/")) {
-      const adminResponse = await handleAdminRequest(request, env, ctx);
+      const adminResponse = await handleAdminRequest(request, env);
       if (adminResponse) return adminResponse;
     }
 

@@ -81,8 +81,8 @@ Provider failover is **quota-aware heuristics**, not a guaranteed quota ledger: 
 Moina validates important user premises before accepting proof/theorem requests and repairs generic refusals when a safe factual correction can answer the underlying request. The independent verification and final-review passes also audit purported cross-checks themselves: algebraic/GF(2) basis vectors, parameter mappings, completeness claims, and small finite enumerations must be checked against the original constraints before Moina can call them independently verified.
 
 
-## Control Plane (1.5.1 final)
-See `DEPLOY_CONTROL_PLANE.md` and `CONTROL_PLANE.md` for the private developer observability setup. Control panel deployment checked.
+## Control Plane (1.5.2 final)
+See `DEPLOY_CONTROL_PLANE.md` and `CONTROL_PLANE.md` for the private developer observability setup.
 
 
 ### Developer Control Plane
@@ -91,3 +91,8 @@ The private control plane is protected by Cloudflare Access and a second server-
 
 ### Control Plane hostname lock
 For production, use a separate hostname such as `admin.askmoina.com`, set `ADMIN_HOSTNAME`, and protect that hostname with Cloudflare Access. The Worker also checks the Access identity and `ADMIN_EMAILS`.
+
+
+## Developer authentication
+
+The Control Plane uses GitHub OAuth and does not require Cloudflare Zero Trust. See `CONTROL_PLANE_AUTH.md`.

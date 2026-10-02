@@ -12,6 +12,9 @@ export interface Env {
   OPS_DB?: D1Database;
   ADMIN_EMAILS?: string;
   ADMIN_HOSTNAME?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  ADMIN_GITHUB_USERS?: string;
 }
 
 export interface D1PreparedStatementLike {

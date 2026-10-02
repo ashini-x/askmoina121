@@ -1,4 +1,4 @@
-# AskMoina 1.5.1 — Control Plane Deployment
+# AskMoina 1.5.2 — Control Plane Deployment
 
 ## 1. Create the D1 database
 

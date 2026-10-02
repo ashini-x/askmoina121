@@ -1,4 +1,4 @@
-# Moina 1.5.1 — Final Deployment Runbook
+# Moina 1.5.2 — Final Deployment Runbook
 
 This release adds a private developer Control Plane and hardens the public error path so provider failures do not appear as raw upstream errors to customers.
 

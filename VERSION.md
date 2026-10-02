@@ -1,4 +1,4 @@
-# AskMoina 1.5.1 — Control Plane Final
+# AskMoina 1.5.2 — Control Plane Final
 
 ## Included
 
