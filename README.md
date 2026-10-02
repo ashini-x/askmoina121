@@ -82,7 +82,7 @@ Moina validates important user premises before accepting proof/theorem requests 
 
 
 ## Control Plane (1.5.1 final)
-See `DEPLOY_CONTROL_PLANE.md` and `CONTROL_PLANE.md` for the private developer observability setup.
+See `DEPLOY_CONTROL_PLANE.md` and `CONTROL_PLANE.md` for the private developer observability setup. Control panel deployment checked.
 
 
 ### Developer Control Plane
