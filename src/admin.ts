@@ -58,6 +58,12 @@ function clearCookie(name: string): string {
   return `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 }
 
+function withCookies(headersInit: HeadersInit, cookies: string[]): Headers {
+  const headers = new Headers(headersInit);
+  for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+  return headers;
+}
+
 function sessionCookie(token: string): string {
   return `${"MOINA_ADMIN_SESSION"}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
 }
@@ -201,11 +207,10 @@ async function completeGithubAuth(request: Request, env: Env): Promise<Response>
 
     return new Response(null, {
       status: 302,
-      headers: {
+      headers: withCookies({
         Location: "/admin/",
-        "Set-Cookie": [sessionCookie(token), clearCookie("MOINA_OAUTH_STATE")].join(", "),
         "Cache-Control": "no-store",
-      },
+      }, [sessionCookie(token), clearCookie("MOINA_OAUTH_STATE")]),
     });
   } catch (error) {
     console.error("[admin-auth] GitHub login failed", error);
@@ -292,7 +297,7 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
     return json({
       generated_at: new Date().toISOString(),
       service: "askmoina-control-plane",
-      build: "1.5.2",
+      build: "1.5.3",
       ops_db_configured: Boolean(env.OPS_DB),
       providers_configured: {
         gemini: Boolean(env.GEMINI_API_KEY),
@@ -300,7 +305,8 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
         cloudflare: Boolean(env.AI?.run),
       },
       sandbox_configured: Boolean(env.E2B_API_KEY),
-      admin_auth_configured: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && String(env.ADMIN_GITHUB_USERS || "").trim()),
+      admin_auth_configured: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
+      admin_allowlist_configured: Boolean(String(env.ADMIN_GITHUB_USERS || "").trim()),
       admin_auth_method: "github-oauth",
       admin_hostname_configured: Boolean(String(env.ADMIN_HOSTNAME || "").trim()),
       retention_days: 30,

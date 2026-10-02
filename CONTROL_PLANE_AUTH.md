@@ -4,7 +4,7 @@ The developer control plane uses GitHub OAuth so it does not depend on a Cloudfl
 
 ## Cloudflare secrets / variables
 
-- `GITHUB_CLIENT_ID` — ordinary Worker variable (not a secret)
+- `GITHUB_CLIENT_ID` — Worker variable or secret
 - `GITHUB_CLIENT_SECRET` — Worker secret
 - `ADMIN_GITHUB_USERS` — Worker secret or variable containing the exact GitHub login(s) and/or numeric GitHub user ID(s) allowed to enter the control plane, comma-separated
 
@@ -30,3 +30,7 @@ Do not enable wildcard callback URLs. The app only requests the `read:user` scop
 8. Admin APIs require the same session cookie.
 
 Do not put the GitHub client secret or session tokens in GitHub.
+
+## 1.5.3 cookie fix
+
+The OAuth callback emits the session and state-clear cookies as separate `Set-Cookie` headers. Browsers must not be given multiple cookies combined into one comma-separated `Set-Cookie` header.

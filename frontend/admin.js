@@ -3,7 +3,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&
 function fmtTime(v){if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):d.toLocaleString()}
 function fmtMs(v){return v==null?'—':`${Math.round(Number(v))} ms`}
 function pill(s,h){return`<span class="pill ${esc(h||'unknown')}">${esc(s||'unknown')}</span>`}
-async function get(path){const r=await fetch(path,{cache:'no-store',headers:{Accept:'application/json'}});if(r.status===401){window.location.href='/admin/';throw new Error('Developer authentication required.')}if(!r.ok)throw new Error(await r.text()||`HTTP ${r.status}`);return r.json()}
+async function get(path){const r=await fetch(path,{cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json'}});if(r.status===401){window.location.href='/admin/';throw new Error('Developer authentication required.')}if(!r.ok)throw new Error(await r.text()||`HTTP ${r.status}`);return r.json()}
 async function load(){
  const [o,r,i,sys]=await Promise.all([get('/api/v1/admin/overview'),get('/api/v1/admin/requests?limit=60'),get('/api/v1/admin/incidents'),get('/api/v1/admin/system')]);
  const s=o.summary||{},n=Number(s.requests||0),ok=Number(s.successful||0),bad=Number(s.failed||0),ver=Number(s.verified||0),rate=n?Math.round(ok/n*100):100;
@@ -16,6 +16,6 @@ async function load(){
  $('#updated').textContent=`Updated ${new Date().toLocaleTimeString()}`;
 }
 async function showTrace(id){const d=await get(`/api/v1/admin/requests/${encodeURIComponent(id)}`);$('#detail').classList.remove('hidden');$('#detailTitle').textContent=id;$('#trace').textContent=JSON.stringify(d,null,2);$('#detail').scrollIntoView({behavior:'smooth'})}
-$('#refreshBtn').onclick=()=>load().catch(showError);$('#closeDetail').onclick=()=>$('#detail').classList.add('hidden');$('#logoutBtn').onclick=async()=>{await fetch('/api/v1/admin/auth/logout',{method:'POST',cache:'no-store'});window.location.href='/admin/';};
+$('#refreshBtn').onclick=()=>load().catch(showError);$('#closeDetail').onclick=()=>$('#detail').classList.add('hidden');$('#logoutBtn').onclick=async()=>{await fetch('/api/v1/admin/auth/logout',{method:'POST',cache:'no-store',credentials:'same-origin'});window.location.href='/admin/';};
 function showError(e){$('#summary').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="k">Control plane</div><div class="v">Unavailable</div><div class="s">${esc(e.message||e)}</div></div>`}
 load().catch(showError);
