@@ -274,10 +274,14 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   const authenticated = !(auth instanceof Response);
 
   if ((url.pathname === "/admin" || url.pathname === "/admin/") && !authenticated) {
-    const assetResponse = await env.ASSETS.fetch(new Request(new URL("/admin-login.html", request.url), request));
-    const headers = new Headers(assetResponse.headers);
-    for (const [key, value] of htmlHeaders()) headers.set(key, value);
-    return new Response(assetResponse.body, { status: assetResponse.status, statusText: assetResponse.statusText, headers });
+    // Never serve the dashboard shell to an unauthenticated request.
+    // Redirect to a harmless static login page so an edge/browser cache can
+    // never accidentally expose the dashboard HTML.
+    const headers = htmlHeaders();
+    headers.set("Location", "/admin-login.html");
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    headers.set("CDN-Cache-Control", "no-store");
+    return new Response(null, { status: 302, headers });
   }
 
   if (auth instanceof Response) return auth;
@@ -286,6 +290,9 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
     const assetResponse = await env.ASSETS.fetch(new Request(new URL("/admin.html", request.url), request));
     const headers = new Headers(assetResponse.headers);
     for (const [key, value] of htmlHeaders()) headers.set(key, value);
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    headers.set("CDN-Cache-Control", "no-store");
+    headers.set("Vary", "Cookie");
     return new Response(assetResponse.body, { status: assetResponse.status, statusText: assetResponse.statusText, headers });
   }
 
