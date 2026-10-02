@@ -304,7 +304,7 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
     return json({
       generated_at: new Date().toISOString(),
       service: "askmoina-control-plane",
-      build: "1.5.3",
+      build: "1.5.5",
       ops_db_configured: Boolean(env.OPS_DB),
       providers_configured: {
         gemini: Boolean(env.GEMINI_API_KEY),

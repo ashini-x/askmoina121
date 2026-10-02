@@ -101,3 +101,8 @@ A daily Worker Cron Trigger deletes telemetry older than 30 days. Cron expressio
 ## 9. What not to do
 
 Do not expose `/api/v1/admin/*` publicly, put API keys in GitHub, put secrets in `wrangler.jsonc`, or create multiple provider accounts to evade provider quotas.
+
+## 1.5.5 routing fix
+
+Protected admin pages and API routes use Cloudflare Workers Static Assets `run_worker_first` so authentication executes before static asset serving. Public static assets remain asset-first.
+

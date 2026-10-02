@@ -1,6 +1,5 @@
-# AskMoina 1.5.4 hotfix
+# 1.5.5 Hotfix
 
-## Admin route hardening
-- Unauthenticated `/admin` and `/admin/` requests now return a `302` to `/admin-login.html` instead of serving the dashboard HTML.
-- Authenticated dashboard responses are marked private/no-store, CDN no-store, and `Vary: Cookie`.
-- This prevents an authenticated dashboard shell from being reused for an anonymous browser.
+The previous control-plane code had the correct authentication logic, but Cloudflare Static Assets could serve a matching/route asset before invoking the Worker. That meant `/admin/` could display the dashboard shell before the auth middleware ran.
+
+1.5.5 adds selective `assets.run_worker_first` for `/admin`, `/admin/*`, and `/api/*`. This ensures the Worker executes first for protected and dynamic paths while leaving ordinary static assets cache/edge friendly.

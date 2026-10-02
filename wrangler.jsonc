@@ -21,7 +21,12 @@
   },
   "assets": {
     "directory": "./frontend",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/admin",
+      "/admin/*",
+      "/api/*"
+    ]
   },
   "d1_databases": [
     {

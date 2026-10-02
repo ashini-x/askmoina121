@@ -1,3 +1,3 @@
-# AskMoina 1.5.4
+# AskMoina 1.5.5
 
-Admin route hardening: unauthenticated `/admin/` requests redirect to the GitHub login page, while authenticated dashboard responses are explicitly private/no-store and vary by Cookie.
+Static-asset routing fix: protected `/admin` and dynamic `/api/*` routes now run through the Worker before Cloudflare serves static assets, so GitHub OAuth/session checks cannot be bypassed by asset-first routing.
